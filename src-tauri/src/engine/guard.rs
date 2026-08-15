@@ -18,6 +18,12 @@ pub struct GuardHandle {
     hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
 }
 
+// HWINEVENTHOOK is a process-global handle; UnhookWinEvent is thread-safe.
+// Tauri's State requires Send + Sync, and the windows crate doesn't auto-impl
+// these for raw handles.
+unsafe impl Send for GuardHandle {}
+unsafe impl Sync for GuardHandle {}
+
 impl GuardHandle {
     pub fn stop(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         unsafe {
