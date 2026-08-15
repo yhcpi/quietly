@@ -179,15 +179,28 @@ async fn handle_http(
     }
 }
 
-async fn serve_block(stream: &mut TcpStream) {
-    use tokio::io::AsyncWriteExt;
+/// Build the complete HTTP/1.1 403 response bytes for the block page.
+/// Pure: deterministic, no I/O, no clock. Used by `serve_block` and
+/// exercised by unit tests so the response shape is regression-locked.
+pub fn build_block_response() -> Vec<u8> {
     let body = BLOCK_HTML;
     let header = format!(
-        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 403 Forbidden\r\n\
+         Content-Type: text/html; charset=utf-8\r\n\
+         Content-Length: {}\r\n\
+         Connection: close\r\n\
+         \r\n",
         body.len()
     );
-    let _ = stream.write_all(header.as_bytes()).await;
-    let _ = stream.write_all(body.as_bytes()).await;
+    let mut response = Vec::with_capacity(header.len() + body.len());
+    response.extend_from_slice(header.as_bytes());
+    response.extend_from_slice(body.as_bytes());
+    response
+}
+
+async fn serve_block(stream: &mut TcpStream) {
+    use tokio::io::AsyncWriteExt;
+    let _ = stream.write_all(&build_block_response()).await;
 }
 
 fn extract_host_for_connect(url: &str) -> Option<String> {

@@ -198,3 +198,14 @@ fn pause_resume_cancel_without_active_timer_errors() {
     assert!(resume_focus_inner(&s).is_err());
     assert!(cancel_focus_inner(&s).is_err());
 }
+
+#[test]
+fn first_run_ack_is_idempotent() {
+    let (s, _d) = make_state();
+    assert!(needs_first_run_ack_inner(&s).unwrap());
+    ack_first_run_inner(&s).unwrap();
+    assert!(!needs_first_run_ack_inner(&s).unwrap());
+    // Calling ack again must not error and must remain acked.
+    ack_first_run_inner(&s).unwrap();
+    assert!(!needs_first_run_ack_inner(&s).unwrap());
+}
