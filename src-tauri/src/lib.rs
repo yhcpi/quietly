@@ -37,6 +37,21 @@ pub fn run() {
             tray::setup(app.handle())?;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            use tauri::{Manager, WindowEvent};
+            // Clicking the X — tear down any focus session first so the
+            // system proxy isn't left pointing at a dead process. We clone
+            // the AppHandle (cheap, refcounted) and re-fetch AppState inside
+            // the spawned future so the &Window borrow doesn't escape.
+            if let WindowEvent::CloseRequested { .. } = event {
+                let app_handle = window.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let inner = app_handle.state::<ipc::commands::AppState>();
+                    ipc::commands::graceful_shutdown(&inner).await;
+                    app_handle.exit(0);
+                });
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             ipc::commands::list_block_rules,
             ipc::commands::create_block_rule,

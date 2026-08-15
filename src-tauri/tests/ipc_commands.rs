@@ -209,3 +209,20 @@ fn first_run_ack_is_idempotent() {
     ack_first_run_inner(&s).unwrap();
     assert!(!needs_first_run_ack_inner(&s).unwrap());
 }
+
+// `graceful_shutdown` is wired to both the window-close handler and the
+// tray Quit action. It must be safe to call when no session is active —
+// each step silently swallows "not running" errors so a half-initialized
+// state can't leak a stuck proxy. This is the contract that makes
+// double-clicking the exe (with no prior focus session) always safe.
+#[tokio::test]
+async fn graceful_shutdown_is_noop_on_idle_state() {
+    let (s, _d) = make_state();
+    // Should not panic, should not error — just return.
+    graceful_shutdown(&s).await;
+    // State should remain unchanged.
+    assert!(s.active_timer.lock().unwrap().is_none());
+    assert!(s.active_proxy.lock().unwrap().is_none());
+    assert!(s.active_guard.lock().unwrap().is_none());
+    assert!(s.proxy_snapshot.lock().unwrap().is_none());
+}

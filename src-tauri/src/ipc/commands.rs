@@ -279,6 +279,20 @@ pub fn stop_guard_inner(state: &AppState) -> Result<(), String> {
     handle.stop().map_err(err)
 }
 
+// ─── graceful shutdown ──────────────────────────────────────────────
+//
+// Best-effort teardown called from window-close and tray Quit. We deliberately
+// ignore individual step failures — if proxy already stopped, that's fine —
+// but we DO want every step to attempt, so a half-initialized session can't
+// leak a stuck proxy. Order matches handleCancel in the UI: timer first
+// (releases session state), guard, proxy (also restores the system proxy).
+
+pub async fn graceful_shutdown(state: &AppState) {
+    let _ = cancel_focus_inner(state);
+    let _ = stop_guard_inner(state);
+    let _ = stop_proxy_inner(state).await;
+}
+
 // ─── Tauri command wrappers ──────────────────────────────────────────
 
 #[tauri::command]

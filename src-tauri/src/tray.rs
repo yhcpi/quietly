@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::menu::{IsMenuItem, Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Runtime};
+use crate::ipc::commands::AppState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrayAction {
@@ -58,7 +59,24 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                             let _ = window.set_focus();
                         }
                     }
-                    TrayAction::Quit => app.exit(0),
+                    TrayAction::Quit => {
+                        // Tear down focus session, guard, and proxy BEFORE
+                        // exiting. Without this, an in-flight focus session
+                        // strands the user's system proxy at 127.0.0.1:47820
+                        // until the next launch reap-and-restore.
+                        //
+                        // The menu-event closure hands us `&AppHandle`, which
+                        // is only valid inside the closure. Clone it, then
+                        // re-fetch AppState from inside the spawned future
+                        // so the borrow doesn't escape.
+                        let app_clone = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            use tauri::Manager;
+                            let inner = app_clone.state::<AppState>();
+                            crate::ipc::commands::graceful_shutdown(&inner).await;
+                            app_clone.exit(0);
+                        });
+                    }
                 }
             }
         })
