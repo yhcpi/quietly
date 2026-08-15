@@ -22,7 +22,7 @@ describe("block rules", () => {
     expect(invoke).toHaveBeenCalledWith("list_block_rules");
   });
 
-  it("createBlockRule passes rule as `rule` arg", async () => {
+  it("createBlockRule passes rule with created_at:0 injected", async () => {
     await ipc.createBlockRule({
       kind: "url",
       pattern: "x.com",
@@ -37,6 +37,7 @@ describe("block rules", () => {
         match_type: "contains",
         note: "",
         active: true,
+        created_at: 0,
       },
     });
   });
@@ -80,29 +81,29 @@ describe("settings + first-run", () => {
 });
 
 describe("hits + sessions", () => {
-  it("listBlockHits uses snake_case key since_ts", async () => {
+  it("listBlockHits uses camelCase key sinceTs", async () => {
     await ipc.listBlockHits(1_700_000_000, 100);
     expect(invoke).toHaveBeenCalledWith("list_block_hits", {
-      since_ts: 1_700_000_000,
+      sinceTs: 1_700_000_000,
       limit: 100,
     });
   });
 
-  it("logBlockHit uses snake_case keys rule_id/schedule_id", async () => {
+  it("logBlockHit uses camelCase keys ruleId/scheduleId", async () => {
     await ipc.logBlockHit("url", "twitter.com", 1, null);
     expect(invoke).toHaveBeenCalledWith("log_block_hit", {
       kind: "url",
       target: "twitter.com",
-      rule_id: 1,
-      schedule_id: null,
+      ruleId: 1,
+      scheduleId: null,
     });
   });
 });
 
 describe("timer / proxy / guard", () => {
-  it("startFocus passes duration_min", async () => {
+  it("startFocus passes durationMin (Tauri camelCase)", async () => {
     await ipc.startFocus(25);
-    expect(invoke).toHaveBeenCalledWith("start_focus", { duration_min: 25 });
+    expect(invoke).toHaveBeenCalledWith("start_focus", { durationMin: 25 });
   });
 
   it("startProxy passes port", async () => {

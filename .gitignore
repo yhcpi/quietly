@@ -11,6 +11,9 @@ src-tauri/Cargo.lock.bak
 # Build output
 dist-portable/
 
+# Verification artifacts (Playwright screenshots taken outside of tests)
+.playwright-mcp/
+
 # Environment
 .env
 .env.local
