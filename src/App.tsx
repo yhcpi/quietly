@@ -1,8 +1,21 @@
+import { Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import Timer from "./routes/Timer";
+import Rules from "./routes/Rules";
+import Schedules from "./routes/Schedules";
+import Stats from "./routes/Stats";
+import Settings from "./routes/Settings";
+
 export default function App() {
   return (
-    <main style={{ padding: 24, fontFamily: 'system-ui' }}>
-      <h1 style={{ color: '#3D5AFE' }}>Quietly</h1>
-      <p>Hello Quietly</p>
-    </main>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<Timer />} />
+        <Route path="/rules" element={<Rules />} />
+        <Route path="/schedules" element={<Schedules />} />
+        <Route path="/stats" element={<Stats />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
+    </Routes>
   );
 }

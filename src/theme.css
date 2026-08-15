@@ -1,0 +1,31 @@
+/* Brand tokens. Single source of truth for colors, radii, spacing.
+   Mirror these into Rust's `assets/block.html` when changing. */
+:root {
+  --color-brand: #3D5AFE;
+  --color-brand-soft: #5C6BC0;
+  --color-brand-faint: #F5F3EF;
+  --color-text: #1a1a1a;
+  --color-text-soft: #5C6BC0;
+  --color-bg: #ffffff;
+  --color-bg-app: #F5F3EF;
+  --color-border: #e6e6e6;
+  --color-muted: #888888;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               sans-serif;
+
+  --shadow-card: 0 4px 24px rgba(61, 90, 254, 0.08);
+}
