@@ -8,7 +8,11 @@ const INIT_SQL: &str = include_str!("../../migrations/0001_init.sql");
 pub type DbPool = Pool<SqliteConnectionManager>;
 
 pub fn open_pool<P: AsRef<Path>>(path: &P) -> Result<DbPool, anyhow::Error> {
-    let manager = SqliteConnectionManager::file(path);
+    // foreign_keys is session-only (per connection), so it must be applied
+    // to EVERY pooled connection via with_init. WAL persists via DB header
+    // and stays at pool-init level.
+    let manager = SqliteConnectionManager::file(path)
+        .with_init(|c| c.execute_batch("PRAGMA foreign_keys = ON;"));
     let pool = Pool::builder().max_size(8).build(manager)?;
     {
         let conn = pool.get()?;
@@ -28,7 +32,7 @@ pub fn init_schema_sync(conn: &Connection) -> Result<(), anyhow::Error> {
 }
 
 fn init_schema(conn: &Connection) -> Result<(), anyhow::Error> {
-    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+    conn.execute_batch("PRAGMA journal_mode = WAL;")?;
     conn.execute_batch(INIT_SQL)?;
 
     let exists: i64 = conn.query_row(
