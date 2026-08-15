@@ -17,9 +17,22 @@ pub fn run() {
             use tauri::Manager;
             let app_data = app.path().app_data_dir().expect("no app data dir");
             std::fs::create_dir_all(&app_data).ok();
+            // Crash-recovery: if a prior session set the proxy and was killed
+            // before stop_proxy could run, the marker file is still on disk.
+            // Detect it and restore the original proxy state before we start
+            // serving any UI.
+            match storage::proxy_marker::reap(&app_data) {
+                Ok(Some(marker)) => eprintln!(
+                    "[setup] recovered proxy state from prior crashed session (was {}:{} enabled)",
+                    marker.snapshot.server.as_deref().unwrap_or("<none>"),
+                    marker.snapshot.enable,
+                ),
+                Ok(None) => {}
+                Err(e) => eprintln!("[setup] proxy marker reap failed: {}", e),
+            }
             let pool = storage::db::open_pool(&app_data.join("quietly.db"))
                 .expect("open db");
-            let state = ipc::commands::AppState::new(pool);
+            let state = ipc::commands::AppState::new(pool, app_data.clone());
             app.manage(state);
             tray::setup(app.handle())?;
             Ok(())

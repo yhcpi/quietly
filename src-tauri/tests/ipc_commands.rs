@@ -14,7 +14,7 @@ fn make_state() -> (AppState, tempfile::TempDir) {
     let manager = SqliteConnectionManager::file(&path).with_init(|c| c.execute_batch("PRAGMA foreign_keys = ON;"));
     let pool = Pool::builder().max_size(2).build(manager).unwrap();
     db::init_schema_sync(&pool.get().unwrap()).unwrap();
-    let state = AppState::new(pool);
+    let state = AppState::new(pool, dir.path().to_path_buf());
     (state, dir)
 }
 

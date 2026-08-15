@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
-use tauri::{State, AppHandle};
+use tauri::{Manager, State, AppHandle};
 use crate::storage::{
+    self,
     block_rule::{self, BlockRule},
     schedule::{self, Schedule},
     session::{self, Session},
@@ -21,10 +22,11 @@ pub struct AppState {
     pub active_proxy: Mutex<Option<ProxyHandle>>,
     pub active_guard: Mutex<Option<GuardHandle>>,
     pub proxy_snapshot: Mutex<Option<ProxySnapshot>>,
+    pub app_data_dir: std::path::PathBuf,
 }
 
 impl AppState {
-    pub fn new(db: DbPool) -> Self {
+    pub fn new(db: DbPool, app_data_dir: std::path::PathBuf) -> Self {
         // Load initial rules
         let initial_rules = block_rule::list(&db).unwrap_or_default();
         Self {
@@ -34,6 +36,7 @@ impl AppState {
             active_proxy: Mutex::new(None),
             active_guard: Mutex::new(None),
             proxy_snapshot: Mutex::new(None),
+            app_data_dir,
         }
     }
 
@@ -220,7 +223,16 @@ pub async fn start_proxy_inner(state: &AppState, app: AppHandle, port: u16) -> R
     // Snapshot current state and set system proxy
     let snap = proxy_state::read_current().map_err(err)?;
     proxy_state::set_proxy(&format!("127.0.0.1:{}", port)).map_err(err)?;
-    *state.proxy_snapshot.lock().unwrap() = Some(snap);
+    *state.proxy_snapshot.lock().unwrap() = Some(snap.clone());
+
+    // Persist a crash-recovery marker. If we are killed before stop_proxy
+    // runs, the next launch will detect this file and restore the user's
+    // original proxy state.
+    let app_data = app.path().app_data_dir().map_err(err)?;
+    let _ = storage::proxy_marker::write(
+        &app_data,
+        &storage::proxy_marker::ProxyMarker { port, snapshot: snap },
+    );
 
     // Start local proxy
     let handle = proxy::start(app, port, state.rules.clone()).await.map_err(err)?;
@@ -244,6 +256,8 @@ pub async fn stop_proxy_inner(state: &AppState) -> Result<(), String> {
     if let Some(snap) = state.proxy_snapshot.lock().unwrap().take() {
         let _ = proxy_state::restore(&snap);
     }
+    // Drop the crash-recovery marker — clean shutdown.
+    storage::proxy_marker::clear(&state.app_data_dir);
     Ok(())
 }
 

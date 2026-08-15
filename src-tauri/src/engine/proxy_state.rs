@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
 use winreg::RegKey;
 
 const PROXY_KEY_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxySnapshot {
     pub enable: bool,
     pub server: Option<String>,
