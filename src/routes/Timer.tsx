@@ -9,6 +9,11 @@ const DEFAULT_DURATION_MIN = 25;
 const MIN_DURATION_MIN = 1;
 const MAX_DURATION_MIN = 120;
 
+// Local proxy port — must match the port Windows system proxy is pointed
+// at during a focus session. 47820 is the MVP default; future releases may
+// surface it via Settings.
+const PROXY_PORT = 47820;
+
 export default function Timer() {
   const [state, setState] = useState<TimerState | null>(null);
   const [durationMin, setDurationMin] = useState<number>(DEFAULT_DURATION_MIN);
@@ -32,8 +37,16 @@ export default function Timer() {
     }
   }
 
-  function handleStart() {
-    return withErrorHandling(() => ipc.startFocus(durationMin));
+  async function handleStart() {
+    return withErrorHandling(async () => {
+      // Order matters: proxy must be listening before the timer starts so
+      // Windows system proxy is already pointing at it. If proxy or guard
+      // fail to come up, do not start the timer (focus session without
+      // shield is worse than no session).
+      await ipc.startProxy(PROXY_PORT);
+      await ipc.startGuard();
+      await ipc.startFocus(durationMin);
+    });
   }
   function handlePause() {
     return withErrorHandling(() => ipc.pauseFocus());
@@ -41,8 +54,16 @@ export default function Timer() {
   function handleResume() {
     return withErrorHandling(() => ipc.resumeFocus());
   }
-  function handleCancel() {
-    return withErrorHandling(() => ipc.cancelFocus());
+  async function handleCancel() {
+    return withErrorHandling(async () => {
+      // Stop in reverse: timer first (releases session state), then guard,
+      // then proxy (which also restores the original Windows system proxy).
+      // Best-effort: if one step fails, still try the others so we don't
+      // leak a stuck shield.
+      try { await ipc.cancelFocus(); } catch { /* no active timer */ }
+      try { await ipc.stopGuard(); } catch { /* guard not running */ }
+      try { await ipc.stopProxy(); } catch { /* proxy not running */ }
+    });
   }
 
   const isRunning = state?.status === "Running";
