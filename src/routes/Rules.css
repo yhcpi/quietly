@@ -1,0 +1,161 @@
+.rules-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.rules-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.rules-sub {
+  color: var(--color-text-soft);
+  font-size: 14px;
+}
+
+.rules-error {
+  padding: var(--space-3);
+  background: #fde7e7;
+  color: #b71c1c;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.rules-list {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.rules-empty {
+  color: var(--color-muted);
+  text-align: center;
+  padding: var(--space-5);
+}
+
+.rules-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.rules-table th,
+.rules-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rules-table th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rules-row-inactive {
+  opacity: 0.5;
+}
+
+.rules-pattern {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.rules-toggle input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.rules-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.rules-actions button {
+  font-size: 13px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-app);
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.btn-danger {
+  color: #b71c1c !important;
+}
+
+.rules-form-card {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+.rules-form-card h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.rules-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rules-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+.rules-form input,
+.rules-form select {
+  font-size: 14px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  color: var(--color-text);
+}
+
+.rules-active-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: var(--space-2) !important;
+}
+
+.rules-form-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.rules-form-actions button {
+  font-size: 14px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-app);
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.btn-primary {
+  background: var(--color-brand) !important;
+  color: #fff !important;
+  border-color: var(--color-brand) !important;
+}
