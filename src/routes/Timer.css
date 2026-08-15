@@ -1,0 +1,125 @@
+.timer-page {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-7);
+}
+
+.timer-card {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-7);
+  box-shadow: var(--shadow-card);
+  min-width: 360px;
+  text-align: center;
+}
+
+.timer-idle h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: var(--space-5);
+  color: var(--color-text);
+}
+
+.timer-duration {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  color: var(--color-text-soft);
+  font-size: 14px;
+}
+
+.timer-duration input {
+  font-size: 24px;
+  text-align: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  width: 120px;
+  margin: 0 auto;
+  font-family: var(--font-sans);
+}
+
+.timer-active {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.timer-phase {
+  font-size: 14px;
+  color: var(--color-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timer-clock {
+  font-size: 96px;
+  font-weight: 200;
+  color: var(--color-brand);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.timer-cycle {
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.timer-status {
+  font-size: 12px;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.timer-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+  margin-top: var(--space-4);
+}
+
+.btn-primary,
+.timer-actions button {
+  font-size: 15px;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.btn-primary {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #2a45d6;
+}
+
+.timer-actions button {
+  background: var(--color-bg-app);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.timer-actions button:hover {
+  background: var(--color-border);
+}
+
+.btn-ghost {
+  background: transparent !important;
+  color: var(--color-text-soft) !important;
+  border: none !important;
+}
+
+.timer-error {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  background: #fde7e7;
+  color: #b71c1c;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}

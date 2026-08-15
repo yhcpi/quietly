@@ -47,3 +47,11 @@ export type Stats = {
   focus_minutes_today: number;
   blocks_today: number;
 };
+
+export type TimerState = {
+  status: "Running" | "Paused" | "Completed";
+  phase: "Focus" | "ShortBreak" | "LongBreak";
+  remaining_seconds: number;
+  total_seconds: number;
+  cycle: number;
+};
