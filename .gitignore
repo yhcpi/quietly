@@ -16,5 +16,5 @@ dist-portable/
 .env.local
 *.local
 
-# Superpowers background-task noise
-.superpowers/sdd/*/tasks/
+# Superpowers process metadata (briefs, reports, progress ledger — session-local)
+.superpowers/
