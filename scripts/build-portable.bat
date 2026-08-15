@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+REM Add Rust toolchain to PATH (Tauri CLI invokes `cargo metadata` internally).
+set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+
 REM Build the Tauri app in release mode and package a portable ZIP.
 REM Usage: scripts\build-portable.bat
 REM Output:

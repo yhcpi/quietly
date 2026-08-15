@@ -8,6 +8,9 @@ dist/
 src-tauri/target/
 src-tauri/Cargo.lock.bak
 
+# Build output
+dist-portable/
+
 # Environment
 .env
 .env.local
