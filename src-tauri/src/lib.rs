@@ -1,10 +1,18 @@
 pub mod engine;
 pub mod storage;
 pub mod ipc;
+pub mod tray;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(|app| {
             use tauri::Manager;
             let app_data = app.path().app_data_dir().expect("no app data dir");
@@ -13,6 +21,7 @@ pub fn run() {
                 .expect("open db");
             let state = ipc::commands::AppState::new(pool);
             app.manage(state);
+            tray::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
