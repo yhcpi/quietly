@@ -13,6 +13,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
             let app_data = app.path().app_data_dir().expect("no app data dir");

@@ -4,7 +4,10 @@
 
 export type BlockRule = {
   id: number | null;
-  kind: "url" | "domain" | "app_path";
+  // `whitelist` inverts url/domain/app_path blocks; `title` matches the
+  // foreground window title. Both are plain `block_rule` rows on the Rust
+  // side — only the `kind` value differs.
+  kind: "url" | "domain" | "app_path" | "title" | "whitelist";
   pattern: string;
   match_type: "exact" | "contains" | "regex";
   note: string;
@@ -12,19 +15,8 @@ export type BlockRule = {
   created_at: number;
 };
 
-export type Schedule = {
-  id: number | null;
-  name: string;
-  kind: "timer" | "weekly";
-  enabled: boolean;
-  config_json: string;
-  block_rule_ids: string;
-  created_at: number;
-};
-
 export type Session = {
   id: number;
-  schedule_id: number | null;
   started_at: number;
   ended_at: number | null;
   duration_seconds: number;
@@ -38,7 +30,6 @@ export type BlockHit = {
   kind: string;
   target: string;
   rule_id: number | null;
-  schedule_id: number | null;
 };
 
 export type Stats = {
@@ -55,3 +46,33 @@ export type TimerState = {
   total_seconds: number;
   cycle: number;
 };
+
+// `storage::app_quota::AppQuota`
+export type AppQuota = {
+  id: number | null;
+  app_pattern: string;
+  daily_minutes: number;
+  used_seconds: number;
+  used_day: string;
+  active: boolean;
+  created_at: number;
+};
+
+// `ipc::commands::QuotaStatusEntry` — today's usage with the daily reset
+// already applied on the Rust side.
+export type QuotaStatus = {
+  app_pattern: string;
+  used_minutes: number;
+  daily_minutes: number;
+  exceeded: boolean;
+};
+
+// `ipc::commands::UsageEntry`
+export type UsageEntry = {
+  target: string;
+  minutes: number;
+  kind: "app" | "url";
+};
+
+// Ranges accepted by `get_stats` and `get_usage_stats`.
+export type Range = "day" | "week" | "month";

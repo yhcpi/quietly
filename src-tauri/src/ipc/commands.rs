@@ -503,20 +503,6 @@ pub async fn stop_proxy_inner(state: &AppState) -> Result<(), String> {
     Ok(())
 }
 
-/// Convert an absolute path to a `file://` URL that the Windows
-/// registry's `AutoConfigURL` accepts. Backslashes → forward slashes;
-/// drive letter colon needs an extra `/` per RFC 8089.
-fn path_to_file_url(path: &std::path::Path) -> String {
-    let s = path.to_string_lossy().replace('\\', "/");
-    if s.starts_with("//") {
-        format!("file:{}", s)
-    } else if s.chars().nth(1) == Some(':') {
-        format!("file:///{}", s)
-    } else {
-        format!("file:///{}", s)
-    }
-}
-
 // ─── guard (state) ──────────────────────────────────────────────────
 
 pub fn start_guard_inner(state: &AppState, app: AppHandle) -> Result<(), String> {
