@@ -1,5 +1,17 @@
 use quietly_lib::engine::timer::*;
 
+#[tokio::test]
+async fn dummy_handle_round_trips_locked_flag() {
+    // dummy_for_test spawns a no-op task on construction, so it must be
+    // called inside a Tokio runtime.
+    let h = TimerHandle::dummy_for_test(true);
+    assert!(h.is_locked());
+    h.set_locked(false);
+    assert!(!h.is_locked());
+    h.set_locked(true);
+    assert!(h.is_locked());
+}
+
 #[test]
 fn next_phase_default_cycle_of_4() {
     let cfg = TimerConfig::default();
@@ -104,4 +116,91 @@ fn phase_duration_seconds_returns_correct_durations() {
     assert_eq!(phase_duration_seconds(Phase::Focus, &cfg), 25 * 60);
     assert_eq!(phase_duration_seconds(Phase::ShortBreak, &cfg), 5 * 60);
     assert_eq!(phase_duration_seconds(Phase::LongBreak, &cfg), 15 * 60);
+}
+
+// ─── run_loop phase callback ─────────────────────────────────────────
+//
+// `run_loop` invokes the `on_phase_change` callback whenever
+// `tick_once()` returns Some(old_phase). We can't easily speed up the
+// 1-second interval without mocking time, so we use focus_min=0 to make
+// every tick trigger a transition and wait long enough for the cycle we
+// care about.
+
+#[tokio::test]
+async fn run_loop_invokes_phase_callback_on_each_transition() {
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    // focus_min=0 → remaining_seconds starts at 0 → first tick transitions.
+    // cycles_before_long=4 → the first four Focus phases go to ShortBreak,
+    // the fifth goes to LongBreak.
+    let cfg = TimerConfig { focus_min: 0, short_break_min: 0, long_break_min: 0, cycles_before_long: 4 };
+    let engine = Arc::new(TimerEngine::new(cfg));
+    let log: Arc<Mutex<Vec<(Phase, Phase)>>> = Arc::new(Mutex::new(Vec::new()));
+    let log_for_cb = log.clone();
+    let engine_for_task = engine.clone();
+
+    let task = tokio::spawn(async move {
+        engine_for_task
+            .run_loop(
+                |_state| {},
+                move |old, new| { log_for_cb.lock().unwrap().push((old, new)); },
+            )
+            .await;
+    });
+
+    // Wait for at least three transitions (Focus→ShortBreak,
+    // ShortBreak→Focus, Focus→ShortBreak again) at 1s/tick.
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+
+    engine.cancel();
+    let _ = task.await;
+
+    let recorded = log.lock().unwrap().clone();
+    assert!(
+        recorded.iter().any(|&(o, n)| o == Phase::Focus && n == Phase::ShortBreak),
+        "Focus → ShortBreak must be recorded, got: {:?}", recorded
+    );
+    assert!(
+        recorded.iter().any(|&(o, n)| o == Phase::ShortBreak && n == Phase::Focus),
+        "ShortBreak → Focus must be recorded, got: {:?}", recorded
+    );
+}
+
+// The phase callback fires in the order transitions occur. With all
+// phase durations zero, the run_loop sequence is:
+// Focus → ShortBreak → Focus → ShortBreak → Focus → ShortBreak → Focus → LongBreak → …
+// i.e. the LongBreak only appears after cycles_before_long focus phases.
+#[tokio::test]
+async fn run_loop_phase_callback_reaches_long_break() {
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    let cfg = TimerConfig { focus_min: 0, short_break_min: 0, long_break_min: 0, cycles_before_long: 2 };
+    let engine = Arc::new(TimerEngine::new(cfg));
+    let log: Arc<Mutex<Vec<(Phase, Phase)>>> = Arc::new(Mutex::new(Vec::new()));
+    let log_for_cb = log.clone();
+    let engine_for_task = engine.clone();
+
+    let task = tokio::spawn(async move {
+        engine_for_task
+            .run_loop(
+                |_state| {},
+                move |old, new| { log_for_cb.lock().unwrap().push((old, new)); },
+            )
+            .await;
+    });
+
+    // With cycles_before_long=2 we hit LongBreak after 2 focus phases
+    // (3 transitions: F→SB, SB→F, F→LB). Wait for 4 ticks to be safe.
+    tokio::time::sleep(Duration::from_millis(4500)).await;
+
+    engine.cancel();
+    let _ = task.await;
+
+    let recorded = log.lock().unwrap().clone();
+    assert!(
+        recorded.iter().any(|&(o, n)| o == Phase::Focus && n == Phase::LongBreak),
+        "Focus → LongBreak must be recorded, got: {:?}", recorded
+    );
 }
