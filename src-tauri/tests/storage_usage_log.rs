@@ -44,6 +44,24 @@ fn usage_log_append_and_list_recent() {
 }
 
 #[test]
+fn usage_log_list_recent_respects_limit() {
+    // limit is the only thing keeping Stats.tsx from pulling every row
+    // in a heavy-use account — verify it actually caps.
+    let p = pool();
+    for i in 0..5 {
+        usage_log::append(&p, &usage_log::UsageSegment {
+            id: None,
+            kind: "app".into(),
+            target: format!("app{}", i),
+            ts: 1_700_000_000 + i,
+            duration_seconds: 1,
+        }).unwrap();
+    }
+    let recent = usage_log::list_recent(&p, 0, 3).unwrap();
+    assert_eq!(recent.len(), 3, "limit=3 must cap the result");
+}
+
+#[test]
 fn usage_log_aggregate_by_target() {
     let p = pool();
 
@@ -90,6 +108,17 @@ fn usage_log_aggregate_by_target() {
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].target, "chrome.exe");
     assert_eq!(filtered[0].total_seconds, 30);
+}
+
+#[test]
+fn usage_log_aggregate_by_target_empty_returns_no_rows() {
+    // Empty db must produce an empty list, not a single (some-target, 0)
+    // row that the chart then has to filter out.
+    let p = pool();
+    let by_app = usage_log::aggregate_by_target(&p, "app", 0).unwrap();
+    assert!(by_app.is_empty(), "fresh db should have no rows, got {:?}", by_app);
+    let by_url = usage_log::aggregate_by_target(&p, "url", 0).unwrap();
+    assert!(by_url.is_empty());
 }
 
 #[test]

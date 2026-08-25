@@ -322,4 +322,31 @@ mod tests {
         assert!(body.contains("return \"DIRECT\""));
         assert!(!body.contains("PROXY"));
     }
+
+    /// `write` with a non-empty rule set must (a) produce a file with
+    /// the proxy directive for the supplied port and (b) point at the
+    /// path the caller asked for, so callers (e.g. start_proxy_inner)
+    /// can read it back and use it as AutoConfigURL.
+    #[test]
+    fn write_with_rules_emits_proxy_directive() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules = vec![r("domain", "reddit.com", "contains", true)];
+        let path = write(dir.path(), &rules, TEST_PORT).unwrap();
+        assert_eq!(path, dir.path().join(PAC_FILENAME));
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains(proxy_spec_for(TEST_PORT).as_str()));
+        assert!(body.contains("shExpMatch(host, \"*reddit.com*\")"));
+    }
+
+    /// Inactive rules must not show up in the rendered PAC, even when
+    /// `write` is called with them present.
+    #[test]
+    fn write_drops_inactive_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let rules = vec![r("domain", "reddit.com", "contains", false)];
+        let path = write(dir.path(), &rules, TEST_PORT).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(!body.contains("PROXY"));
+        assert!(!body.contains("reddit.com"));
+    }
 }

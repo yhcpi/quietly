@@ -32,6 +32,55 @@ fn block_rule_crud() {
 }
 
 #[test]
+fn block_rule_update_rewrites_fields() {
+    // update() is what the edit-rule form hits; without it the only
+    // way to "edit" a rule is delete-and-recreate, which orphans the
+    // id and any block_hits.rule_id rows that pointed at it.
+    let p = pool();
+    let mut rule = block_rule::BlockRule {
+        id: None,
+        kind: "url".into(),
+        pattern: "twitter.com".into(),
+        match_type: "contains".into(),
+        note: "".into(),
+        active: true,
+        created_at: 0,
+    };
+    let id = block_rule::create(&p, &rule).unwrap();
+    rule.id = Some(id);
+    rule.pattern = "x.com".into();
+    rule.note = "updated".into();
+    rule.match_type = "exact".into();
+    block_rule::update(&p, &rule).unwrap();
+    let got = block_rule::list(&p).unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].pattern, "x.com");
+    assert_eq!(got[0].note, "updated");
+    assert_eq!(got[0].match_type, "exact");
+}
+
+#[test]
+fn block_rule_list_active_filters_inactive() {
+    // list_active is the hot path on every proxy request — must not
+    // surface inactive rows or the engine silently lets through rules
+    // the user disabled.
+    let p = pool();
+    let id1 = block_rule::create(&p, &block_rule::BlockRule {
+        id: None, kind: "url".into(), pattern: "a.com".into(),
+        match_type: "contains".into(), note: "".into(),
+        active: true, created_at: 0,
+    }).unwrap();
+    let _id2 = block_rule::create(&p, &block_rule::BlockRule {
+        id: None, kind: "url".into(), pattern: "b.com".into(),
+        match_type: "contains".into(), note: "".into(),
+        active: false, created_at: 0,
+    }).unwrap();
+    let active = block_rule::list_active(&p).unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, Some(id1));
+}
+
+#[test]
 fn session_lifecycle() {
     let p = pool();
     let id = session::start(&p, "focus", 1500).unwrap();
@@ -40,6 +89,21 @@ fn session_lifecycle() {
     assert_eq!(s.completed, true);
     assert_eq!(s.phase, "focus");
     assert_eq!(s.duration_seconds, 1500);
+}
+
+#[test]
+fn session_end_with_completed_false() {
+    // The non-completed branch is what cancel_focus_inner uses to
+    // distinguish a user-cancelled session from a finished one. The
+    // session row must still be marked ended (the bug fixed in the
+    // open-source prep audit was that end() was never called at all
+    // on cancel, leaving completed=NULL forever).
+    let p = pool();
+    let id = session::start(&p, "focus", 1500).unwrap();
+    session::end(&p, id, false).unwrap();
+    let s = &session::list_recent(&p, 0).unwrap()[0];
+    assert_eq!(s.completed, false);
+    assert_eq!(s.id, id);
 }
 
 #[test]
@@ -53,4 +117,15 @@ fn block_hit_log_and_count() {
     let counts = block_hit::count_by_day(&p, 0).unwrap();
     let total: i64 = counts.iter().map(|(_, n)| n).sum();
     assert_eq!(total, 2);
+}
+
+#[test]
+fn block_hit_count_by_day_empty_returns_no_rows() {
+    // count_by_day is called from the Stats page on every render —
+    // a fresh install (no hits yet) must produce an empty list, not
+    // a list with a single (today, 0) entry that the chart then has
+    // to special-case.
+    let p = pool();
+    let counts = block_hit::count_by_day(&p, 0).unwrap();
+    assert!(counts.is_empty(), "fresh db should have no day rows, got {:?}", counts);
 }

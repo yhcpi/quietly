@@ -387,3 +387,109 @@ fn rewrite_request_line(request_line: &str, new_path: &str) -> String {
     let version = parts.next().unwrap_or("HTTP/1.1");
     format!("{} {} {}", method, new_path, version)
 }
+
+// ─── tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_connect_host_extracts_target() {
+        assert_eq!(
+            parse_connect_host("CONNECT example.com:443 HTTP/1.1"),
+            Some("example.com:443".into())
+        );
+    }
+
+    #[test]
+    fn parse_connect_host_rejects_non_connect() {
+        assert_eq!(parse_connect_host("GET / HTTP/1.1"), None);
+    }
+
+    #[test]
+    fn parse_request_url_accepts_http_and_https() {
+        assert_eq!(
+            parse_request_url("GET http://example.com/ HTTP/1.1"),
+            Some("http://example.com/".into())
+        );
+        assert_eq!(
+            parse_request_url("POST https://api.example.com/v1 HTTP/1.1"),
+            Some("https://api.example.com/v1".into())
+        );
+    }
+
+    #[test]
+    fn parse_request_url_rejects_relative_path() {
+        // HTTP/1.1 proxy requests must be absolute; relative paths are
+        // a non-proxy request and should not be forwarded.
+        assert_eq!(parse_request_url("GET /foo HTTP/1.1"), None);
+    }
+
+    #[test]
+    fn parse_request_url_rejects_unknown_method() {
+        assert_eq!(parse_request_url("BREW /coffee HTTP/1.1"), None);
+    }
+
+    #[test]
+    fn extract_host_for_connect_strips_path() {
+        assert_eq!(
+            extract_host_for_connect("https://example.com/some/path"),
+            Some("example.com".into())
+        );
+        assert_eq!(
+            extract_host_for_connect("http://user:pass@example.com:8080/foo"),
+            Some("user:pass@example.com:8080".into())
+        );
+    }
+
+    #[test]
+    fn extract_path_and_query_preserves_query_string() {
+        assert_eq!(
+            extract_path_and_query("http://example.com/api?x=1&y=2"),
+            "/api?x=1&y=2".to_string()
+        );
+        assert_eq!(
+            extract_path_and_query("http://example.com"),
+            "/".to_string()
+        );
+        assert_eq!(
+            extract_path_and_query("http://example.com/"),
+            "/".to_string()
+        );
+    }
+
+    #[test]
+    fn rewrite_request_line_replaces_url_with_relative_path() {
+        // Absolute URL form is what the browser sends to a proxy;
+        // upstream server wants the relative path.
+        let r = rewrite_request_line("GET http://example.com/foo?x=1 HTTP/1.1", "/foo?x=1");
+        assert_eq!(r, "GET /foo?x=1 HTTP/1.1");
+    }
+
+    #[test]
+    fn rewrite_request_line_preserves_method_and_version() {
+        let r = rewrite_request_line("POST https://api.example.com/v1 HTTP/1.1", "/v1");
+        assert_eq!(r, "POST /v1 HTTP/1.1");
+    }
+
+    #[test]
+    fn rewrite_request_line_falls_back_when_malformed() {
+        // Missing version → "HTTP/1.1" default. Missing URL → "" but
+        // we still emit three whitespace-separated tokens.
+        let r = rewrite_request_line("GET", "/foo");
+        assert_eq!(r, "GET /foo HTTP/1.1");
+    }
+
+    #[test]
+    fn build_block_response_has_403_and_html_body() {
+        let resp = build_block_response();
+        let s = std::str::from_utf8(&resp).unwrap();
+        assert!(s.starts_with("HTTP/1.1 403 Forbidden\r\n"));
+        assert!(s.contains("Content-Type: text/html"));
+        assert!(s.contains("Connection: close"));
+        // Body follows the blank line that ends the headers.
+        let split = s.split("\r\n\r\n").nth(1).unwrap();
+        assert!(split.contains("<"));
+    }
+}
