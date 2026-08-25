@@ -56,22 +56,12 @@ describe("block rules", () => {
   });
 });
 
-describe("schedules", () => {
-  it("toggleSchedule passes id+enabled", async () => {
-    await ipc.toggleSchedule(3, false);
-    expect(invoke).toHaveBeenCalledWith("toggle_schedule", {
-      id: 3,
-      enabled: false,
-    });
-  });
-});
-
-describe("settings + first-run", () => {
-  it("setSettings wraps value under `settings`", async () => {
-    await ipc.setSettings({ theme: "dark" });
-    expect(invoke).toHaveBeenCalledWith("set_settings", {
-      settings: { theme: "dark" },
-    });
+describe("first-run", () => {
+  it("needsFirstRunAck takes no args", async () => {
+    invoke.mockResolvedValue(true);
+    const r = await ipc.needsFirstRunAck();
+    expect(r).toBe(true);
+    expect(invoke).toHaveBeenCalledWith("needs_first_run_ack");
   });
 
   it("ackFirstRun takes no args", async () => {
@@ -89,21 +79,48 @@ describe("hits + sessions", () => {
     });
   });
 
-  it("logBlockHit uses camelCase keys ruleId/scheduleId", async () => {
-    await ipc.logBlockHit("url", "twitter.com", 1, null);
+  it("logBlockHit uses camelCase key ruleId", async () => {
+    await ipc.logBlockHit("url", "twitter.com", 1);
     expect(invoke).toHaveBeenCalledWith("log_block_hit", {
       kind: "url",
       target: "twitter.com",
       ruleId: 1,
-      scheduleId: null,
     });
   });
 });
 
 describe("timer / proxy / guard", () => {
-  it("startFocus passes durationMin (Tauri camelCase)", async () => {
-    await ipc.startFocus(25);
-    expect(invoke).toHaveBeenCalledWith("start_focus", { durationMin: 25 });
+  it("startFocus passes durationMin + locked + autoBlock (Tauri camelCase)", async () => {
+    await ipc.startFocus(25, false, true);
+    expect(invoke).toHaveBeenCalledWith("start_focus", {
+      durationMin: 25,
+      locked: false,
+      autoBlock: true,
+    });
+  });
+
+  it("startFocus forwards a locked session", async () => {
+    await ipc.startFocus(50, true, true);
+    expect(invoke).toHaveBeenCalledWith("start_focus", {
+      durationMin: 50,
+      locked: true,
+      autoBlock: true,
+    });
+  });
+
+  it("cancelFocus takes no args", async () => {
+    await ipc.cancelFocus();
+    expect(invoke).toHaveBeenCalledWith("cancel_focus");
+  });
+
+  it("isSessionLocked takes no args", async () => {
+    await ipc.isSessionLocked();
+    expect(invoke).toHaveBeenCalledWith("is_session_locked");
+  });
+
+  it("setSessionLocked passes locked", async () => {
+    await ipc.setSessionLocked(true);
+    expect(invoke).toHaveBeenCalledWith("set_session_locked", { locked: true });
   });
 
   it("startProxy passes port", async () => {
@@ -119,6 +136,108 @@ describe("timer / proxy / guard", () => {
   it("startGuard takes no args", async () => {
     await ipc.startGuard();
     expect(invoke).toHaveBeenCalledWith("start_guard");
+  });
+});
+
+describe("whitelist", () => {
+  it("listWhitelist → list_whitelist", async () => {
+    await ipc.listWhitelist();
+    expect(invoke).toHaveBeenCalledWith("list_whitelist");
+  });
+
+  it("createWhitelist injects created_at:0", async () => {
+    await ipc.createWhitelist({
+      kind: "whitelist",
+      pattern: "docs.google.com",
+      match_type: "contains",
+      note: "",
+      active: true,
+    });
+    expect(invoke).toHaveBeenCalledWith("create_whitelist", {
+      rule: {
+        kind: "whitelist",
+        pattern: "docs.google.com",
+        match_type: "contains",
+        note: "",
+        active: true,
+        created_at: 0,
+      },
+    });
+  });
+
+  it("deleteWhitelist passes id", async () => {
+    await ipc.deleteWhitelist(3);
+    expect(invoke).toHaveBeenCalledWith("delete_whitelist", { id: 3 });
+  });
+
+  it("toggleWhitelist passes id", async () => {
+    await ipc.toggleWhitelist(3);
+    expect(invoke).toHaveBeenCalledWith("toggle_whitelist", { id: 3 });
+  });
+});
+
+describe("app quotas", () => {
+  it("listQuotas → list_quotas", async () => {
+    await ipc.listQuotas();
+    expect(invoke).toHaveBeenCalledWith("list_quotas");
+  });
+
+  it("createQuota fills the server-owned fields", async () => {
+    await ipc.createQuota("Discord.exe", 60);
+    expect(invoke).toHaveBeenCalledWith("create_quota", {
+      quota: {
+        app_pattern: "Discord.exe",
+        daily_minutes: 60,
+        used_seconds: 0,
+        used_day: "",
+        active: true,
+        created_at: 0,
+      },
+    });
+  });
+
+  it("updateQuota wraps the row under `quota`", async () => {
+    const quota = {
+      id: 1,
+      app_pattern: "Discord.exe",
+      daily_minutes: 30,
+      used_seconds: 120,
+      used_day: "2026-08-16",
+      active: true,
+      created_at: 1_700_000_000,
+    };
+    await ipc.updateQuota(quota);
+    expect(invoke).toHaveBeenCalledWith("update_quota", { quota });
+  });
+
+  it("deleteQuota passes id", async () => {
+    await ipc.deleteQuota(9);
+    expect(invoke).toHaveBeenCalledWith("delete_quota", { id: 9 });
+  });
+
+  it("setQuotaActive → set_app_quota_active with id+active", async () => {
+    await ipc.setQuotaActive(9, false);
+    expect(invoke).toHaveBeenCalledWith("set_app_quota_active", {
+      id: 9,
+      active: false,
+    });
+  });
+
+  it("getQuotaStatus takes no args", async () => {
+    await ipc.getQuotaStatus();
+    expect(invoke).toHaveBeenCalledWith("get_quota_status");
+  });
+
+  it("getTodayUsage takes no args", async () => {
+    await ipc.getTodayUsage();
+    expect(invoke).toHaveBeenCalledWith("get_today_usage");
+  });
+});
+
+describe("usage stats", () => {
+  it("getUsageStats passes range", async () => {
+    await ipc.getUsageStats("week");
+    expect(invoke).toHaveBeenCalledWith("get_usage_stats", { range: "week" });
   });
 });
 

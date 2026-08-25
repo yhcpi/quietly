@@ -8,11 +8,14 @@ import {
   RULE_MATCH_TYPES,
   type RuleDraft,
 } from "../lib/rule";
+import { humanizeError } from "../lib/error";
 import "./Rules.css";
 
 type EditState =
   | { mode: "new" }
   | { mode: "edit"; rule: BlockRule };
+
+type Tab = "block" | "whitelist";
 
 function toDraft(rule: BlockRule): RuleDraft {
   return {
@@ -24,29 +27,55 @@ function toDraft(rule: BlockRule): RuleDraft {
   };
 }
 
+const PATTERN_PLACEHOLDER: Record<RuleDraft["kind"], string> = {
+  url: "https://twitter.com/home",
+  domain: "twitter.com",
+  app_path: "Discord.exe",
+  title: "youtube",
+  whitelist: "docs.google.com",
+};
+
 export default function Rules() {
+  const [tab, setTab] = useState<Tab>("block");
   const [rules, setRules] = useState<BlockRule[]>([]);
   const [edit, setEdit] = useState<EditState>({ mode: "new" });
   const [draft, setDraft] = useState<RuleDraft>(blankRule());
   const [error, setError] = useState<string | null>(null);
 
+  const isWhitelist = tab === "whitelist";
+
   async function refresh() {
     try {
       setError(null);
-      setRules(await ipc.listBlockRules());
+      if (isWhitelist) {
+        setRules(await ipc.listWhitelist());
+      } else {
+        // Whitelist rows live in the same table — keep them off this tab.
+        const all = await ipc.listBlockRules();
+        setRules(all.filter((r) => r.kind !== "whitelist"));
+      }
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     }
   }
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [tab]);
 
-  function startNew() {
+  function startNew(next: Tab = tab) {
     setEdit({ mode: "new" });
-    setDraft(blankRule());
+    setDraft(
+      next === "whitelist"
+        ? { ...blankRule(), kind: "whitelist" }
+        : blankRule(),
+    );
     setError(null);
+  }
+
+  function switchTab(next: Tab) {
+    setTab(next);
+    startNew(next);
   }
 
   function startEdit(rule: BlockRule) {
@@ -65,14 +94,20 @@ export default function Rules() {
     try {
       setError(null);
       if (edit.mode === "new") {
-        await ipc.createBlockRule(draft);
+        // There is no update_whitelist command — a whitelist row is a
+        // block_rule row, so edits go through update_block_rule for both tabs.
+        if (isWhitelist) {
+          await ipc.createWhitelist(draft);
+        } else {
+          await ipc.createBlockRule(draft);
+        }
       } else {
         await ipc.updateBlockRule({ ...edit.rule, ...draft });
       }
       startNew();
       await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     }
   }
 
@@ -80,10 +115,14 @@ export default function Rules() {
     if (rule.id == null) return;
     try {
       setError(null);
-      await ipc.deleteBlockRule(rule.id);
+      if (isWhitelist) {
+        await ipc.deleteWhitelist(rule.id);
+      } else {
+        await ipc.deleteBlockRule(rule.id);
+      }
       await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     }
   }
 
@@ -91,27 +130,52 @@ export default function Rules() {
     if (rule.id == null) return;
     try {
       setError(null);
-      await ipc.setBlockRuleActive(rule.id, !rule.active);
+      if (isWhitelist) {
+        await ipc.toggleWhitelist(rule.id);
+      } else {
+        await ipc.setBlockRuleActive(rule.id, !rule.active);
+      }
       await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     }
   }
 
   return (
     <div className="rules-page">
       <header className="rules-header">
-        <h1>Block rules</h1>
+        <h1>{isWhitelist ? "Whitelist" : "Block rules"}</h1>
         <p className="rules-sub">
-          Block distracting URLs, domains, or app paths during focus.
+          {isWhitelist
+            ? "Always allowed during focus, even when a block rule matches."
+            : "Block distracting URLs, domains, app paths, or window titles during focus."}
         </p>
       </header>
+
+      <div className="rules-tabs">
+        <button
+          className={"rules-tab" + (isWhitelist ? "" : " rules-tab-active")}
+          onClick={() => switchTab("block")}
+        >
+          Block
+        </button>
+        <button
+          className={"rules-tab" + (isWhitelist ? " rules-tab-active" : "")}
+          onClick={() => switchTab("whitelist")}
+        >
+          Whitelist
+        </button>
+      </div>
 
       {error && <div className="rules-error">{error}</div>}
 
       <section className="rules-list">
         {rules.length === 0 ? (
-          <p className="rules-empty">No rules yet. Add one below.</p>
+          <p className="rules-empty">
+            {isWhitelist
+              ? "No whitelist entries yet. Add one below."
+              : "No rules yet. Add one below."}
+          </p>
         ) : (
           <table className="rules-table">
             <thead>
@@ -157,21 +221,29 @@ export default function Rules() {
       </section>
 
       <section className="rules-form-card">
-        <h2>{edit.mode === "new" ? "New rule" : "Edit rule"}</h2>
+        <h2>
+          {edit.mode === "new"
+            ? isWhitelist
+              ? "New whitelist entry"
+              : "New rule"
+            : "Edit rule"}
+        </h2>
         <form onSubmit={handleSubmit} className="rules-form">
-          <label>
-            <span>Kind</span>
-            <select
-              value={draft.kind}
-              onChange={(e) =>
-                setDraft({ ...draft, kind: e.target.value as RuleDraft["kind"] })
-              }
-            >
-              {RULE_KINDS.map((k) => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
-          </label>
+          {!isWhitelist && (
+            <label>
+              <span>Kind</span>
+              <select
+                value={draft.kind}
+                onChange={(e) =>
+                  setDraft({ ...draft, kind: e.target.value as RuleDraft["kind"] })
+                }
+              >
+                {RULE_KINDS.map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label>
             <span>Pattern</span>
@@ -179,9 +251,15 @@ export default function Rules() {
               type="text"
               value={draft.pattern}
               onChange={(e) => setDraft({ ...draft, pattern: e.target.value })}
-              placeholder="twitter.com"
+              placeholder={PATTERN_PLACEHOLDER[draft.kind]}
             />
           </label>
+          {draft.kind === "title" && (
+            <p className="rules-hint">
+              Matches the foreground window title (case-insensitive). Only
+              enforced while the guard is running — i.e. not during breaks.
+            </p>
+          )}
 
           <label>
             <span>Match</span>
@@ -220,7 +298,7 @@ export default function Rules() {
 
           <div className="rules-form-actions">
             {edit.mode === "edit" && (
-              <button type="button" onClick={startNew}>
+              <button type="button" onClick={() => startNew()}>
                 Cancel
               </button>
             )}

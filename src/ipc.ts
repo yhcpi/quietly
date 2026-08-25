@@ -5,11 +5,13 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AppQuota,
   BlockRule,
   BlockHit,
-  Schedule,
-  Session,
+  QuotaStatus,
+  Range,
   Stats,
+  UsageEntry,
 } from "./types";
 
 // ─── block rules ────────────────────────────────────────────────
@@ -23,23 +25,6 @@ export const deleteBlockRule = (id: number) =>
 export const setBlockRuleActive = (id: number, active: boolean) =>
   invoke<void>("set_block_rule_active", { id, active });
 
-// ─── schedules ──────────────────────────────────────────────────
-export const listSchedules = () => invoke<Schedule[]>("list_schedules");
-export const createSchedule = (s: Omit<Schedule, "id" | "created_at">) =>
-  invoke<number>("create_schedule", { schedule: { ...s, created_at: 0 } });
-export const updateSchedule = (s: Schedule) =>
-  invoke<void>("update_schedule", { schedule: s });
-export const deleteSchedule = (id: number) =>
-  invoke<void>("delete_schedule", { id });
-export const toggleSchedule = (id: number, enabled: boolean) =>
-  invoke<void>("toggle_schedule", { id, enabled });
-
-// ─── settings ───────────────────────────────────────────────────
-export const getSettings = () =>
-  invoke<Record<string, unknown>>("get_settings");
-export const setSettings = (value: Record<string, unknown>) =>
-  invoke<void>("set_settings", { settings: value });
-
 // ─── first-run ack ──────────────────────────────────────────────
 export const needsFirstRunAck = () => invoke<boolean>("needs_first_run_ack");
 export const ackFirstRun = () => invoke<void>("ack_first_run");
@@ -51,29 +36,34 @@ export const logBlockHit = (
   kind: string,
   target: string,
   ruleId: number | null,
-  scheduleId: number | null,
 ) =>
   invoke<void>("log_block_hit", {
     kind,
     target,
     ruleId,
-    scheduleId,
   });
 
-// ─── sessions ───────────────────────────────────────────────────
-export const listSessions = (sinceTs: number) =>
-  invoke<Session[]>("list_sessions", { sinceTs });
-
 // ─── stats ──────────────────────────────────────────────────────
-export const getStats = (range: "day" | "week" | "month" = "day") =>
+export const getStats = (range: Range = "day") =>
   invoke<Stats>("get_stats", { range });
 
 // ─── focus timer ────────────────────────────────────────────────
-export const startFocus = (durationMin: number) =>
-  invoke<number>("start_focus", { durationMin });
+// `start_focus` starts the proxy + guard itself when `autoBlock` is true —
+// callers must NOT also call startProxy/startGuard. `locked` disables
+// cancel for the lifetime of the session.
+export const startFocus = (
+  durationMin: number,
+  locked: boolean,
+  autoBlock: boolean,
+) => invoke<number>("start_focus", { durationMin, locked, autoBlock });
 export const pauseFocus = () => invoke<void>("pause_focus");
 export const resumeFocus = () => invoke<void>("resume_focus");
+// Rejects with "session is locked — cancel disabled" when locked.
+// On success the Rust side also tears down guard + proxy.
 export const cancelFocus = () => invoke<void>("cancel_focus");
+export const setSessionLocked = (locked: boolean) =>
+  invoke<void>("set_session_locked", { locked });
+export const isSessionLocked = () => invoke<boolean>("is_session_locked");
 
 // ─── proxy ──────────────────────────────────────────────────────
 export const startProxy = (port: number) =>
@@ -82,4 +72,43 @@ export const stopProxy = () => invoke<void>("stop_proxy");
 
 // ─── guard ──────────────────────────────────────────────────────
 export const startGuard = () => invoke<void>("start_guard");
-export const stopGuard = () => invoke<void>("stop_guard");
+
+// ─── whitelist (block_rule rows with kind="whitelist") ──────────
+export const listWhitelist = () => invoke<BlockRule[]>("list_whitelist");
+// `kind` is forced to "whitelist" by the Rust side, so the draft's own
+// kind is irrelevant here.
+export const createWhitelist = (rule: Omit<BlockRule, "id" | "created_at">) =>
+  invoke<number>("create_whitelist", { rule: { ...rule, created_at: 0 } });
+export const deleteWhitelist = (id: number) =>
+  invoke<void>("delete_whitelist", { id });
+// Flips `active` and returns the new value.
+export const toggleWhitelist = (id: number) =>
+  invoke<boolean>("toggle_whitelist", { id });
+
+// ─── app quotas ─────────────────────────────────────────────────
+export const listQuotas = () => invoke<AppQuota[]>("list_quotas");
+export const createQuota = (appPattern: string, dailyMinutes: number) =>
+  invoke<number>("create_quota", {
+    quota: {
+      app_pattern: appPattern,
+      daily_minutes: dailyMinutes,
+      used_seconds: 0,
+      used_day: "",
+      active: true,
+      created_at: 0,
+    },
+  });
+export const updateQuota = (quota: AppQuota) =>
+  invoke<void>("update_quota", { quota });
+export const deleteQuota = (id: number) =>
+  invoke<void>("delete_quota", { id });
+export const setQuotaActive = (id: number, active: boolean) =>
+  invoke<void>("set_app_quota_active", { id, active });
+export const getQuotaStatus = () =>
+  invoke<QuotaStatus[]>("get_quota_status");
+export const getTodayUsage = () =>
+  invoke<QuotaStatus[]>("get_today_usage");
+
+// ─── usage stats ────────────────────────────────────────────────
+export const getUsageStats = (range: Range) =>
+  invoke<UsageEntry[]>("get_usage_stats", { range });

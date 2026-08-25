@@ -154,8 +154,30 @@
   font-family: var(--font-sans);
 }
 
-.btn-primary {
-  background: var(--color-brand) !important;
-  color: #fff !important;
-  border-color: var(--color-brand) !important;
+.rules-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.rules-tab {
+  font-size: 14px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-soft);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.rules-tab-active {
+  color: var(--color-brand);
+  border-color: var(--color-brand);
+  font-weight: 500;
+}
+
+.rules-hint {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-top: calc(-1 * var(--space-2));
 }

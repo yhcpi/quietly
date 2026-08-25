@@ -9,16 +9,26 @@ import {
   YAxis,
 } from "recharts";
 import * as ipc from "../ipc";
-import type { BlockHit, Stats } from "../types";
+import type { BlockHit, Range, Stats, UsageEntry } from "../types";
 import { hitsByHour, formatHourLabel } from "../lib/stats";
+import { humanizeError } from "../lib/error";
 import "./Stats.css";
 
 const DAY_SECONDS = 86400;
 const RECENT_HIT_LIMIT = 20;
+const TOP_N = 10;
+
+const USAGE_RANGES: ReadonlyArray<{ value: Range; label: string }> = [
+  { value: "day", label: "24h" },
+  { value: "week", label: "7d" },
+  { value: "month", label: "30d" },
+];
 
 export default function Stats() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [hits, setHits] = useState<BlockHit[]>([]);
+  const [usage, setUsage] = useState<UsageEntry[]>([]);
+  const [usageRange, setUsageRange] = useState<Range>("week");
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
@@ -32,7 +42,7 @@ export default function Stats() {
       setStats(s);
       setHits(h);
     } catch (e) {
-      setError(String(e));
+      setError(humanizeError(e));
     }
   }
 
@@ -40,8 +50,18 @@ export default function Stats() {
     refresh();
   }, []);
 
+  useEffect(() => {
+    ipc
+      .getUsageStats(usageRange)
+      .then(setUsage)
+      .catch((e) => setError(humanizeError(e)));
+  }, [usageRange]);
+
   const buckets = hitsByHour(hits);
   const recent = hits.slice(0, RECENT_HIT_LIMIT);
+  // `get_usage_stats` returns both kinds, already sorted by seconds DESC.
+  const topApps = usage.filter((u) => u.kind === "app").slice(0, TOP_N);
+  const topSites = usage.filter((u) => u.kind === "url").slice(0, TOP_N);
 
   return (
     <div className="stats-page">
@@ -97,6 +117,33 @@ export default function Stats() {
         </div>
       </section>
 
+      <section className="stats-chart-card">
+        <div className="stats-usage-head">
+          <h2>Usage</h2>
+          <div className="stats-range">
+            {USAGE_RANGES.map((r) => (
+              <button
+                key={r.value}
+                className={
+                  "stats-range-btn" +
+                  (usageRange === r.value ? " stats-range-btn-active" : "")
+                }
+                onClick={() => setUsageRange(r.value)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="stats-sub">
+          Foreground app time and website activity. Nothing is recorded during
+          breaks, when the guard and proxy are off. Website minutes are
+          approximate — each request counts as ~1s.
+        </p>
+        <UsageChart title="Top apps" data={topApps} />
+        <UsageChart title="Top websites" data={topSites} />
+      </section>
+
       <section className="stats-recent-card">
         <h2>Recent blocks</h2>
         {recent.length === 0 ? (
@@ -124,6 +171,33 @@ export default function Stats() {
           </table>
         )}
       </section>
+    </div>
+  );
+}
+
+function UsageChart({ title, data }: { title: string; data: UsageEntry[] }) {
+  return (
+    <div className="stats-usage-chart">
+      <h3>{title}</h3>
+      {data.length === 0 ? (
+        <p className="stats-empty">No usage recorded yet.</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={Math.max(120, data.length * 28)}>
+          <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#eee" horizontal={false} />
+            <XAxis type="number" allowDecimals={false} stroke="#888" />
+            <YAxis
+              type="category"
+              dataKey="target"
+              width={150}
+              stroke="#888"
+              tick={{ fontSize: 12 }}
+            />
+            <Tooltip formatter={(v: number) => [`${v} min`, "Time"]} />
+            <Bar dataKey="minutes" fill="#3D5AFE" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }

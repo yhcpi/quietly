@@ -1,0 +1,218 @@
+.quotas-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.quotas-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.quotas-sub {
+  color: var(--color-text-soft);
+  font-size: 14px;
+}
+
+.quotas-error {
+  padding: var(--space-3);
+  background: #fde7e7;
+  color: #b71c1c;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.quotas-list,
+.quotas-form-card {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.quotas-form-card {
+  padding: var(--space-5);
+}
+
+.quotas-form-card h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.quotas-empty {
+  color: var(--color-muted);
+  text-align: center;
+  padding: var(--space-5);
+}
+
+.quotas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.quotas-table th,
+.quotas-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.quotas-table th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.quotas-row-inactive {
+  opacity: 0.5;
+}
+
+.quotas-pattern {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.quotas-exceeded {
+  color: #b71c1c;
+  font-weight: 500;
+}
+
+/* ─── inline "Today" editor ────────────────────────────────────────── */
+
+.quotas-edit-trigger {
+  background: transparent;
+  border: 1px dashed transparent;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: border-color 80ms ease, background 80ms ease;
+}
+
+.quotas-edit-trigger:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg-app);
+}
+
+.quotas-edit-hint {
+  font-size: 11px;
+  color: var(--color-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quotas-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.quotas-edit-input {
+  width: 72px;
+  font-size: 14px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-brand);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  outline: none;
+}
+
+.quotas-edit-input:focus {
+  box-shadow: 0 0 0 2px rgba(61, 90, 254, 0.25);
+}
+
+.quotas-edit-unit {
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+.quotas-edit-action {
+  font-size: 12px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-app);
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.quotas-edit-action:hover {
+  background: var(--color-border);
+}
+
+.quotas-edit-reset {
+  color: #b71c1c;
+}
+
+.quotas-toggle input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.quotas-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.quotas-actions button {
+  font-size: 13px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-app);
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.quotas-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.quotas-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 13px;
+  color: var(--color-text-soft);
+}
+
+.quotas-form input {
+  font-size: 14px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  color: var(--color-text);
+}
+
+.quotas-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.quotas-form-actions button {
+  font-size: 14px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
