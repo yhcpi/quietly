@@ -3,6 +3,101 @@ pub mod storage;
 pub mod ipc;
 pub mod tray;
 
+/// Check that the Microsoft Edge WebView2 Runtime is installed.
+///
+/// On most Windows 10 1809+ / Windows 11 machines WebView2 is
+/// preinstalled (it ships with Edge). On LTSC images, locked-down
+/// enterprise builds, or any host where Edge was removed, the
+/// runtime is missing and the Tauri window fails to create with a
+/// generic "Could not load webview" error. Probe the registry so we
+/// can give the user an actionable hint before that happens.
+///
+/// In release builds stderr is discarded (`windows_subsystem =
+/// "windows"`), so this also pops a native MessageBox and writes a
+/// diagnostics file under the user's temp dir — otherwise the user
+/// gets a silent crash with no clue what to fix.
+fn warn_if_webview2_missing() {
+    use winreg::enums::KEY_READ;
+    use winreg::RegKey;
+
+    const WEBVIEW2_GUID: &str =
+        r"{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+    const SUBKEY: &str =
+        r"Software\Microsoft\EdgeUpdate\Clients";
+    const INSTALL_URL: &str =
+        "https://developer.microsoft.com/microsoft-edge/webview2/";
+
+    // Two-tier check: registry first (the canonical Edge Update
+    // bookkeeping), then file existence (covers machines where WebView2
+    // is installed but the Edge Update agent never ran, e.g. a one-off
+    // zip extraction of the Evergreen Runtime, or a locked-down image
+    // where the update service is disabled). If EITHER shows WebView2
+    // is present, we treat it as installed and skip the warning.
+    for hive in [winreg::enums::HKEY_LOCAL_MACHINE, winreg::enums::HKEY_CURRENT_USER] {
+        let Ok(root) = RegKey::predef(hive).open_subkey_with_flags(SUBKEY, KEY_READ) else {
+            continue;
+        };
+        if root.open_subkey(WEBVIEW2_GUID).is_ok() {
+            return;
+        }
+    }
+    // File fallback: the Evergreen Runtime always installs
+    // `msedgewebview2.exe` under one of these well-known paths. The
+    // System32 path is the Windows-shipped location on Windows 11
+    // (version 150+); the Program Files path is the standalone
+    // Evergreen installer.
+    let candidates: &[&str] = &[
+        r"C:\Windows\System32\Microsoft-Edge-WebView\msedgewebview2.exe",
+        r"C:\Windows\System32\msedgewebview2.exe",
+        r"C:\Program Files (x86)\Microsoft\EdgeWebView\Application",
+    ];
+    if candidates.iter().any(|p| std::path::Path::new(p).exists()) {
+        return;
+    }
+
+    let message = format!(
+        "Microsoft Edge WebView2 Runtime not detected.\n\
+         \n\
+         Quietly needs WebView2 to display its window. It is\n\
+         preinstalled with Microsoft Edge on Windows 10 1809+ /\n\
+         Windows 11. If Edge is not installed (or you removed it),\n\
+         download the Evergreen Runtime from:\n\
+         \n\
+         {INSTALL_URL}\n\
+         \n\
+         After installing, relaunch Quietly."
+    );
+
+    // stderr (only visible in debug builds)
+    eprintln!("[setup] FATAL: WebView2 missing. {message}");
+
+    // diagnostics file under temp — survives a silent release crash
+    if let Some(tmp) = std::env::var_os("TEMP").or_else(|| std::env::var_os("TMP")) {
+        let path = std::path::PathBuf::from(tmp).join("quietly-webview2-missing.txt");
+        let _ = std::fs::write(&path, &message);
+    }
+
+    // native message box so the user actually sees something in release
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            MessageBoxW, MB_ICONWARNING, MB_OK,
+        };
+        let body: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+        let title = "Quietly — WebView2 Runtime required";
+        let title_wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            MessageBoxW(
+                None,
+                PCWSTR(body.as_ptr()),
+                PCWSTR(title_wide.as_ptr()),
+                MB_ICONWARNING | MB_OK,
+            );
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -16,17 +111,32 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             use tauri::Manager;
-            let app_data = app.path().app_data_dir().expect("no app data dir");
-            std::fs::create_dir_all(&app_data).ok();
+            // Proxy debug log defaults to off — opt in with
+            // QUIETLY_PROXY_DEBUG=1 (or =true). Reads once at startup;
+            // toggling the env var after this point has no effect.
+            engine::proxy::init_proxy_debug_log();
+            warn_if_webview2_missing();
+            let app_data = match app.path().app_data_dir() {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("[setup] FATAL: cannot resolve app data dir: {}", e);
+                    eprintln!("[setup] Hint: %APPDATA% must be set and writable for the current user.");
+                    return Err(e.into());
+                }
+            };
+            if let Err(e) = std::fs::create_dir_all(&app_data) {
+                eprintln!("[setup] FATAL: cannot create {}: {}", app_data.display(), e);
+                return Err(e.into());
+            }
 
             // ─── Crash / exit cleanup ────────────────────────────────
             //
             // Three layers, all run unconditionally on every launch:
             //
             //  1. Reap legacy marker file. Old binaries wrote HKCU
-            //     ProxyServer=127.0.0.1:47820 and a snapshot to restore.
-            //     If we find one, restore the original proxy state and
-            //     delete the marker.
+            //     ProxyServer pointing at our local proxy and a
+            //     snapshot to restore. If we find one, restore the
+            //     original proxy state and delete the marker.
             //
             //  2. Rewrite PAC file to the "DIRECT everything" safe
             //     default. This is the new crash-safe cleanup path.
@@ -39,9 +149,11 @@ pub fn run() {
             //     our PAC file. Clearing it means browsers fall back
             //     to their default (DIRECT) without our involvement.
             //
-            //  4. Orphan audit: HKCU ProxyServer might still be
-            //     pointing at our port from a pre-PAC binary. Clear
-            //     it for the same reason.
+            // Note: there is no longer a "HKCU ProxyServer points at
+            // us" orphan audit — the listener port is kernel-assigned
+            // (see `proxy::start`) so we cannot recognize our own
+            // old port without the marker file, and the marker-based
+            // recovery already covers the crash case.
             match storage::proxy_marker::reap(&app_data) {
                 Ok(Some(marker)) => eprintln!(
                     "[setup] recovered legacy proxy state (was {}:{} enabled)",
@@ -61,31 +173,14 @@ pub fn run() {
             if let Err(e) = engine::proxy_state::clear_pac_url() {
                 eprintln!("[setup] failed to clear AutoConfigURL: {}", e);
             }
-            // Orphan audit (legacy HKCU proxy).
-            if let Ok(current) = engine::proxy_state::read_current() {
-                let orphan = current.server.as_deref()
-                    == Some("127.0.0.1:47820") && current.enable;
-                if orphan {
-                    eprintln!(
-                        "[setup] WARNING: legacy HKCU proxy still at 127.0.0.1:47820 — clearing."
-                    );
-                    let _ = engine::proxy_state::clear_proxy();
-                    // Belt-and-suspenders: also clear the per-connection
-                    // PAC field, in case a pre-PAC binary left one set
-                    // on the binary blob. This is the same path as
-                    // stop_proxy_inner — empty string clears
-                    // INTERNET_PER_CONN_AUTOCONFIG_URL.
-                    engine::proxy_state::clear_pac_url_per_connection();
-                    // Same WinINET cache invalidation as the focus
-                    // session path: stale ProxyEnable=1 from a pre-PAC
-                    // binary is meaningless after we clear it, but
-                    // running browsers only notice when the broadcast
-                    // tells them to re-read the registry.
-                    engine::proxy_state::notify_proxy_changed();
+            let db_path = app_data.join("quietly.db");
+            let pool = match storage::db::open_pool(&db_path) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("[setup] FATAL: cannot open db at {}: {}", db_path.display(), e);
+                    return Err(e.into());
                 }
-            }
-            let pool = storage::db::open_pool(&app_data.join("quietly.db"))
-                .expect("open db");
+            };
             let state = ipc::commands::AppState::new(pool, app_data.clone());
             app.manage(state);
             tray::setup(app.handle())?;
@@ -128,8 +223,6 @@ pub fn run() {
             ipc::commands::update_block_rule,
             ipc::commands::delete_block_rule,
             ipc::commands::set_block_rule_active,
-            ipc::commands::get_settings,
-            ipc::commands::set_settings,
             ipc::commands::get_stats,
             ipc::commands::needs_first_run_ack,
             ipc::commands::ack_first_run,

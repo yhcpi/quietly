@@ -1,33 +1,29 @@
 use quietly_lib::engine::proxy_state::ProxySnapshot;
 use quietly_lib::storage::proxy_marker::{self, ProxyMarker};
 
-#[test]
-fn write_creates_marker_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let m = ProxyMarker {
-        port: 8080,
+fn marker_with(port: u16) -> ProxyMarker {
+    ProxyMarker {
+        port,
+        pid: 0,
         snapshot: ProxySnapshot {
             enable: false,
             server: None,
             override_str: None,
         },
-    };
-    proxy_marker::write(dir.path(), &m).unwrap();
+    }
+}
+
+#[test]
+fn write_creates_marker_file() {
+    let dir = tempfile::tempdir().unwrap();
+    proxy_marker::write(dir.path(), &marker_with(8080)).unwrap();
     assert!(dir.path().join("proxy-marker.json").exists());
 }
 
 #[test]
 fn clear_removes_marker_file() {
     let dir = tempfile::tempdir().unwrap();
-    let m = ProxyMarker {
-        port: 8080,
-        snapshot: ProxySnapshot {
-            enable: false,
-            server: None,
-            override_str: None,
-        },
-    };
-    proxy_marker::write(dir.path(), &m).unwrap();
+    proxy_marker::write(dir.path(), &marker_with(8080)).unwrap();
     proxy_marker::clear(dir.path());
     assert!(!dir.path().join("proxy-marker.json").exists());
 }

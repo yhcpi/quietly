@@ -414,7 +414,7 @@ pub async fn start_proxy_inner(state: &AppState, app: AppHandle, port: u16) -> R
     // "the previous session died mid-flight" and restore from it.
     let _ = storage::proxy_marker::write(
         &app_data,
-        &storage::proxy_marker::ProxyMarker { port: actual_port, snapshot: snap },
+        &storage::proxy_marker::ProxyMarker { port: actual_port, pid: std::process::id(), snapshot: snap },
     );
 
     // App-usage tracker is started once on app setup (lib.rs) and runs
