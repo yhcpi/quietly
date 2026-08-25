@@ -22,17 +22,22 @@ use std::path::{Path, PathBuf};
 use crate::storage::block_rule::BlockRule;
 
 pub const PAC_FILENAME: &str = "proxy.pac";
-pub const PROXY_PORT: u16 = crate::engine::timer::TimerHandle::AUTO_BLOCK_PROXY_PORT;
-const PROXY_SPEC: &str = concat!("PROXY 127.0.0.1:", "47820");
+
+/// The PAC directive for the local proxy at the given port. The
+/// kernel-assigned port comes from the TcpListener's `local_addr()`
+/// after `proxy::start` binds port 0 — see `engine/proxy.rs`.
+pub fn proxy_spec_for(port: u16) -> String {
+    format!("PROXY 127.0.0.1:{}", port)
+}
 
 /// Write the PAC file. Returns the absolute path on success.
 ///
 /// The rendered PAC returns `DIRECT` for any host / URL not matched by
 /// the supplied block rules. If `rules` is empty the file is still
 /// written — `FindProxyForURL` simply returns `DIRECT` for everything.
-pub fn write(app_data_dir: &Path, rules: &[BlockRule]) -> std::io::Result<PathBuf> {
+pub fn write(app_data_dir: &Path, rules: &[BlockRule], port: u16) -> std::io::Result<PathBuf> {
     let path = app_data_dir.join(PAC_FILENAME);
-    let body = render(rules);
+    let body = render(rules, port);
     std::fs::write(&path, body)?;
     Ok(path)
 }
@@ -41,12 +46,13 @@ pub fn write(app_data_dir: &Path, rules: &[BlockRule]) -> std::io::Result<PathBu
 /// "safe default" written on every cleanup path so the user can never
 /// be left with a stale file pointing at a dead proxy.
 pub fn write_safe_default(app_data_dir: &Path) -> std::io::Result<PathBuf> {
-    write(app_data_dir, &[])
+    write(app_data_dir, &[], 0)
 }
 
 /// Build the PAC JS body. Pure function — no I/O — so it's trivial to
-/// unit-test the rule → JS mapping.
-pub fn render(rules: &[BlockRule]) -> String {
+/// unit-test the rule → JS mapping. `port` is the local proxy port
+/// (the kernel-assigned one when called from `start_proxy_inner`).
+pub fn render(rules: &[BlockRule], port: u16) -> String {
     let mut out = String::new();
     // PAC must be valid JS. We wrap shExpMatch calls so PACs without
     // any matching rules still parse (some PAC engines reject files
@@ -91,7 +97,7 @@ pub fn render(rules: &[BlockRule]) -> String {
                     out.push_str(line);
                     out.push('\n');
                 }
-                out.push_str(&format!("    return \"{PROXY_SPEC}\";\n"));
+                out.push_str(&format!("    return \"{}\";\n", proxy_spec_for(port)));
                 out.push_str("  }\n");
             }
         }
@@ -186,6 +192,11 @@ mod tests {
     use super::*;
     use crate::storage::block_rule::BlockRule;
 
+    // Tests use a fixed test port so we can assert on the rendered
+    // PROXY directive. The real port comes from the kernel-assigned
+    // listener address at runtime — see `engine/proxy.rs`.
+    const TEST_PORT: u16 = 47820;
+
     fn r(kind: &str, pattern: &str, match_type: &str, active: bool) -> BlockRule {
         BlockRule {
             id: None,
@@ -200,12 +211,12 @@ mod tests {
 
     #[test]
     fn render_empty_returns_valid_pac() {
-        let s = render(&[]);
+        let s = render(&[], TEST_PORT);
         assert!(s.contains("function FindProxyForURL"));
         assert!(s.contains("return \"DIRECT\""));
         // No rules means no shExpMatch calls, but the function must
         // still parse as JS.
-        assert!(!s.contains("PROXY 127.0.0.1:47820"));
+        assert!(!s.contains(proxy_spec_for(TEST_PORT).as_str()));
     }
 
     /// Brace-balance invariant: every `if (...)` opening `{` MUST have
@@ -224,7 +235,7 @@ mod tests {
                       true)
                 })
                 .collect();
-            let s = render(&rules);
+            let s = render(&rules, TEST_PORT);
             // Strip line comments so they don't inflate the count.
             let code: String = s
                 .lines()
@@ -242,37 +253,37 @@ mod tests {
     }
 
     #[test]
-    fn render_domain_contains_translates_to_shExpMatch_with_globs() {
-        let s = render(&[r("domain", "reddit", "contains", true)]);
+    fn render_domain_contains_translates_to_shexpmatch_with_globs() {
+        let s = render(&[r("domain", "reddit", "contains", true)], TEST_PORT);
         assert!(s.contains("shExpMatch(host, \"*reddit*\")"));
-        assert!(s.contains("PROXY 127.0.0.1:47820"));
+        assert!(s.contains(proxy_spec_for(TEST_PORT).as_str()));
     }
 
     #[test]
-    fn render_domain_exact_translates_to_shExpMatch_no_globs() {
-        let s = render(&[r("domain", "example.com", "exact", true)]);
+    fn render_domain_exact_translates_to_shexpmatch_no_globs() {
+        let s = render(&[r("domain", "example.com", "exact", true)], TEST_PORT);
         assert!(s.contains("shExpMatch(host, \"example.com\")"));
     }
 
     #[test]
     fn render_url_contains_matches_against_url() {
-        let s = render(&[r("url", "/login", "contains", true)]);
+        let s = render(&[r("url", "/login", "contains", true)], TEST_PORT);
         assert!(s.contains("shExpMatch(url, \"*/login*\")"));
     }
 
     #[test]
     fn render_app_path_skipped_in_pac() {
-        let s = render(&[r("app_path", "discord.exe", "exact", true)]);
+        let s = render(&[r("app_path", "discord.exe", "exact", true)], TEST_PORT);
         // app_path rules aren't network-relevant — PAC should not
         // include them, so the only PROXY line is absent.
-        assert!(!s.contains("PROXY 127.0.0.1:47820"));
+        assert!(!s.contains(proxy_spec_for(TEST_PORT).as_str()));
     }
 
     #[test]
     fn render_regex_skipped_in_pac() {
-        let s = render(&[r("domain", ".*", "regex", true)]);
+        let s = render(&[r("domain", ".*", "regex", true)], TEST_PORT);
         // regex can't be expressed in PAC — silent skip.
-        assert!(!s.contains("PROXY 127.0.0.1:47820"));
+        assert!(!s.contains(proxy_spec_for(TEST_PORT).as_str()));
     }
 
     #[test]
@@ -281,36 +292,34 @@ mod tests {
             r("domain", "reddit", "contains", true),       // block
             r("whitelist", "reddit.com", "contains", true), // whitelist override
         ];
-        let s = render(&rules);
+        let s = render(&rules, TEST_PORT);
         // Whitelist section appears before the PROXY line.
         let wl_pos = s.find("Whitelist overrides").unwrap();
-        let block_pos = s.find("PROXY 127.0.0.1:47820").unwrap();
+        let block_pos = s.find(proxy_spec_for(TEST_PORT).as_str()).unwrap();
         assert!(wl_pos < block_pos);
         assert!(s.contains("return \"DIRECT\""));
     }
 
     #[test]
     fn render_inactive_rules_excluded() {
-        let s = render(&[r("domain", "reddit", "contains", false)]);
-        assert!(!s.contains("PROXY 127.0.0.1:47820"));
+        let s = render(&[r("domain", "reddit", "contains", false)], TEST_PORT);
+        assert!(!s.contains(proxy_spec_for(TEST_PORT).as_str()));
+    }
+
+    #[test]
+    fn proxy_spec_for_uses_supplied_port() {
+        assert_eq!(proxy_spec_for(0), "PROXY 127.0.0.1:0");
+        assert_eq!(proxy_spec_for(47820), "PROXY 127.0.0.1:47820");
+        assert_eq!(proxy_spec_for(65535), "PROXY 127.0.0.1:65535");
     }
 
     #[test]
     fn write_safe_default_contains_only_direct() {
-        let dir = tempdir_like();
-        let path = write_safe_default(&dir).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_safe_default(dir.path()).unwrap();
         let body = std::fs::read_to_string(&path).unwrap();
         assert!(body.contains("function FindProxyForURL"));
         assert!(body.contains("return \"DIRECT\""));
         assert!(!body.contains("PROXY"));
-    }
-
-    /// Minimal temp dir helper that avoids pulling in a `tempfile`
-    /// dependency. Uses the process PID to namespace.
-    fn tempdir_like() -> std::path::PathBuf {
-        let pid = std::process::id();
-        let dir = std::env::temp_dir().join(format!("quietly_pac_test_{}", pid));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
     }
 }
