@@ -38,4 +38,5 @@ scripts/test_*.py
 
 # Superpowers process metadata (briefs, reports, progress ledger — session-local)
 .superpowers/
-.design/
+.omo/
+.design/.omo/

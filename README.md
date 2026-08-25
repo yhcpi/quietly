@@ -130,3 +130,7 @@ src-tauri/              Rust backend
   tests/                integration tests
   capabilities/         Tauri 2 capability definitions
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

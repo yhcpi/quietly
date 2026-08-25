@@ -1,3 +1,9 @@
+//! Quietly backend entry point.
+//!
+//! `run()` builds the Tauri app, sets up the database + proxy recovery,
+//! and starts the tray + app-usage tracker. IPC handlers live in
+//! `ipc::commands`; this crate just wires the runtime together.
+
 pub mod engine;
 pub mod storage;
 pub mod ipc;
@@ -237,7 +243,6 @@ pub fn run() {
             ipc::commands::stop_proxy,
             ipc::commands::start_guard,
             ipc::commands::stop_guard,
-            // 6-feature additions: whitelist, lock plan, app quota, usage stats.
             ipc::commands::list_whitelist,
             ipc::commands::create_whitelist,
             ipc::commands::delete_whitelist,

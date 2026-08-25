@@ -1,3 +1,11 @@
+//! Windows accessibility hook (SetWinEventHook) that closes or hides
+//! blocked app windows when their process gains focus.
+//!
+//! Activated only while a focus session is running with at least one
+//! app-path or title rule. `UnhookWinEvent` is resolved at runtime via
+//! `GetProcAddress` so the binary still loads on hosts whose
+//! `user32.dll` lacks the export.
+
 #![cfg(windows)]
 
 use std::sync::Arc;

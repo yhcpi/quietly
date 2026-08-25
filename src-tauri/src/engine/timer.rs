@@ -1,3 +1,10 @@
+//! Focus / short-break / long-break state machine.
+//!
+//! The timer advances once per second via `run_loop` and emits a
+//! phase transition event on each boundary. The engine is decoupled
+//! from persistence — callers track the session id and decide when
+//! to write it to storage.
+
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 use serde::{Serialize, Deserialize};

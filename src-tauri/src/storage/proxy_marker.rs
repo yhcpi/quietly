@@ -1,20 +1,15 @@
-// Persistent marker for "we have set the system proxy to 127.0.0.1:<port>".
-//
-// Why: when Quietly sets the Windows system proxy via HKCU and the process
-// is killed (taskkill /F, crash, power loss), stop_proxy never runs and the
-// proxy stays pointing at our dead port. The user's browser then can't reach
-// any site until they manually clear the registry.
-//
-// Defense in depth:
-// 1. On every successful start_proxy we write this marker with the snapshot
-//    we *would* restore to on stop.
-// 2. On stop_proxy we delete the marker (after restoring).
-// 3. On app startup, if the marker exists we restore from it and delete it.
-//    This handles the crash path: a stale marker is evidence that the prior
-//    session died without calling stop_proxy.
-//
-// The marker is stored under `app_data_dir()/proxy-marker.json` next to
-// the SQLite db.
+//! Persistent marker for "we have set the system proxy to 127.0.0.1:<port>".
+//!
+//! Written by `start_proxy` next to the SQLite db. If Quietly is killed
+//! before `stop_proxy` can run, the next launch detects the marker and
+//! restores the user's original proxy state — preventing the
+//! "all sites hang against a dead port" failure mode.
+//!
+//! The PID stored at write time is consulted at reap time: a still-live
+//! PID means a second Quietly instance is running and racing us, so we
+//! leave the marker alone for the live owner to clean up.
+//!
+//! Stored under `app_data_dir()/proxy-marker.json` next to the SQLite db.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

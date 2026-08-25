@@ -1,3 +1,11 @@
+//! URL / app-path / window-title rule matching.
+//!
+//! Three entry points (`matches_url` / `matches_app` / `matches_title`)
+//! share a `match_str` core. Regex patterns are cached in a global
+//! `Mutex<HashMap>` so per-request matching stays O(1) compile + O(n)
+//! scan, and user-supplied patterns are capped at 4 KiB to bound
+//! ReDoS surface.
+
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 

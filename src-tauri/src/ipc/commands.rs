@@ -533,83 +533,106 @@ pub async fn graceful_shutdown(state: &AppState) {
 
 // ─── Tauri command wrappers ──────────────────────────────────────────
 
+/// Insert a new block rule. Returns the new row id.
 #[tauri::command]
 pub async fn create_block_rule(state: State<'_, AppState>, rule: BlockRule) -> Result<i64, String> {
     create_block_rule_inner(&state, rule).await
 }
 
+/// Replace an existing block rule by id.
 #[tauri::command]
 pub async fn update_block_rule(state: State<'_, AppState>, rule: BlockRule) -> Result<(), String> {
     update_block_rule_inner(&state, rule).await
 }
 
+/// Delete a block rule by id.
 #[tauri::command]
 pub async fn delete_block_rule(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     delete_block_rule_inner(&state, id).await
 }
 
+/// Toggle the `active` flag on a block rule without changing its pattern.
 #[tauri::command]
 pub async fn set_block_rule_active(state: State<'_, AppState>, id: i64, active: bool) -> Result<(), String> {
     set_block_rule_active_inner(&state, id, active).await
 }
 
+/// Aggregate block-hit stats for the requested range ("day" | "week" | "month").
 #[tauri::command]
 pub fn get_stats(state: State<AppState>, range: String) -> Result<serde_json::Value, String> {
     get_stats_inner(&state, range)
 }
 
+/// True the first time Quietly launches on a fresh data dir. Used by
+/// the UI to surface the first-run explainer.
 #[tauri::command]
 pub fn needs_first_run_ack(app: AppHandle) -> Result<bool, String> {
     let path = app.path().app_data_dir().map_err(err)?;
     needs_first_run_ack_inner(&path)
 }
 
+/// Mark the first-run explainer as acknowledged so it doesn't reappear.
 #[tauri::command]
 pub fn ack_first_run(app: AppHandle) -> Result<(), String> {
     let path = app.path().app_data_dir().map_err(err)?;
     ack_first_run_inner(&path)
 }
 
+/// Recent block hits since `since_ts` (ms epoch). Capped by `limit`.
 #[tauri::command]
 pub fn list_block_hits(state: State<AppState>, since_ts: i64, limit: i64) -> Result<Vec<BlockHit>, String> {
     list_block_hits_inner(&state, since_ts, limit)
 }
 
+/// Record a single block event from the proxy / guard. Idempotent for
+/// the same target within the same second.
 #[tauri::command]
 pub fn log_block_hit(state: State<AppState>, kind: String, target: String, rule_id: Option<i64>) -> Result<(), String> {
     log_block_hit_inner(&state, kind, target, rule_id)
 }
 
+/// Past focus sessions since `since_ts`, newest first.
 #[tauri::command]
 pub fn list_sessions(state: State<AppState>, since_ts: i64) -> Result<Vec<Session>, String> {
     list_sessions_inner(&state, since_ts)
 }
 
+/// Pause the running focus timer. The phase clock stops advancing
+/// until `resume_focus` is called.
 #[tauri::command]
 pub fn pause_focus(state: State<AppState>) -> Result<(), String> {
     pause_focus_inner(&state)
 }
 
+/// Resume a paused focus timer. No-op if not paused.
 #[tauri::command]
 pub fn resume_focus(state: State<AppState>) -> Result<(), String> {
     resume_focus_inner(&state)
 }
 
+/// Start the local HTTP proxy on the kernel-assigned port. Writes a
+/// crash-recovery marker so the next launch can restore proxy state
+/// if Quietly is killed before `stop_proxy` runs.
 #[tauri::command]
 pub async fn start_proxy(app: AppHandle, state: State<'_, AppState>, port: u16) -> Result<(), String> {
     start_proxy_inner(&state, app, port).await
 }
 
+/// Stop the local proxy and restore the user's pre-focus proxy state.
+/// Idempotent — safe to call after the proxy has already exited.
 #[tauri::command]
 pub async fn stop_proxy(state: State<'_, AppState>) -> Result<(), String> {
     stop_proxy_inner(&state).await
 }
 
+/// Install the WinEvent accessibility hook that hides / closes blocked
+/// app windows when they gain focus.
 #[tauri::command]
 pub fn start_guard(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     start_guard_inner(&state, app)
 }
 
+/// Remove the WinEvent hook. Idempotent.
 #[tauri::command]
 pub fn stop_guard(state: State<AppState>) -> Result<(), String> {
     stop_guard_inner(&state)
@@ -790,31 +813,41 @@ pub fn get_usage_stats_inner(state: &AppState, range: String) -> Result<Vec<Usag
 
 // ─── Tauri command wrappers (new) ────────────────────────────────────
 
+/// All block rules with `kind != "whitelist"`, in id order.
 #[tauri::command]
 pub fn list_block_rules(state: State<AppState>) -> Result<Vec<BlockRule>, String> {
     list_block_rules_inner(&state)
 }
 
+/// All rules with `kind == "whitelist"`, in id order.
 #[tauri::command]
 pub fn list_whitelist(state: State<AppState>) -> Result<Vec<BlockRule>, String> {
     list_whitelist_inner(&state)
 }
 
+/// Insert a new whitelist rule. Pattern semantics match `block_rule`
+/// but stored under `kind = "whitelist"` so list endpoints can branch.
 #[tauri::command]
 pub async fn create_whitelist(state: State<'_, AppState>, rule: BlockRule) -> Result<i64, String> {
     create_whitelist_inner(&state, rule).await
 }
 
+/// Delete a whitelist rule by id.
 #[tauri::command]
 pub async fn delete_whitelist(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     delete_whitelist_inner(&state, id).await
 }
 
+/// Flip a whitelist rule's `active` flag. Returns the new state.
 #[tauri::command]
 pub async fn toggle_whitelist(state: State<'_, AppState>, id: i64) -> Result<bool, String> {
     toggle_whitelist_inner(&state, id).await
 }
 
+/// Start a focus session of `duration_min` minutes. If `locked`, the
+/// cancel button is disabled in the UI. If `auto_block`, also start
+/// the proxy + guard so block rules take effect immediately. Returns
+/// the new session id.
 #[tauri::command]
 pub async fn start_focus(
     app: AppHandle,
@@ -826,6 +859,9 @@ pub async fn start_focus(
     start_focus_inner(&state, app, duration_min, locked, auto_block).await
 }
 
+/// Cancel the running focus session (no-op if locked). Stops the
+/// timer, marks the session row as ended, and tears down auto-block
+/// resources (proxy + guard) if they were started by `start_focus`.
 #[tauri::command]
 pub async fn cancel_focus(state: State<'_, AppState>) -> Result<(), String> {
     cancel_focus_inner(&state)?;
@@ -833,51 +869,64 @@ pub async fn cancel_focus(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Set the cancel-locked flag on the current session.
 #[tauri::command]
 pub fn set_session_locked(state: State<AppState>, locked: bool) -> Result<(), String> {
     set_session_locked_inner(&state, locked)
 }
 
+/// True when the current session is cancel-locked (UI hides cancel).
 #[tauri::command]
 pub fn is_session_locked(state: State<AppState>) -> Result<bool, String> {
     is_session_locked_inner(&state)
 }
 
+/// All configured app quotas.
 #[tauri::command]
 pub fn list_quotas(state: State<AppState>) -> Result<Vec<AppQuota>, String> {
     list_quotas_inner(&state)
 }
 
+/// Create a new app quota. `app_pattern` is lower-cased and
+/// duplicate patterns are rejected.
 #[tauri::command]
 pub fn create_quota(state: State<AppState>, quota: AppQuota) -> Result<i64, String> {
     create_quota_inner(&state, quota)
 }
 
+/// Update an existing app quota.
 #[tauri::command]
 pub fn update_quota(state: State<AppState>, quota: AppQuota) -> Result<(), String> {
     update_quota_inner(&state, quota)
 }
 
+/// Delete an app quota by id.
 #[tauri::command]
 pub fn delete_quota(state: State<AppState>, id: i64) -> Result<(), String> {
     delete_quota_inner(&state, id)
 }
 
+/// Toggle an app quota's `active` flag.
 #[tauri::command]
 pub fn set_app_quota_active(state: State<AppState>, id: i64, active: bool) -> Result<(), String> {
     set_app_quota_active_inner(&state, id, active)
 }
 
+/// Current quota status (used_minutes, remaining_minutes, breach flag)
+/// for every active quota, evaluated against today's usage.
 #[tauri::command]
 pub fn get_quota_status(state: State<AppState>) -> Result<Vec<QuotaStatusEntry>, String> {
     get_quota_status_inner(&state)
 }
 
+/// Same shape as `get_quota_status` but scoped to a single day. Used
+/// by the Stats page to render the today column.
 #[tauri::command]
 pub fn get_today_usage(state: State<AppState>) -> Result<Vec<QuotaStatusEntry>, String> {
     get_today_usage_inner(&state)
 }
 
+/// Per-app usage aggregates over the requested range.
 #[tauri::command]
 pub fn get_usage_stats(state: State<AppState>, range: String) -> Result<Vec<UsageEntry>, String> {
     get_usage_stats_inner(&state, range)

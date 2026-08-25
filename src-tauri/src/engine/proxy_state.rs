@@ -60,47 +60,50 @@ pub fn restore(snap: &ProxySnapshot) -> Result<(), Box<dyn std::error::Error + S
     Ok(())
 }
 
-// ─── PAC (AutoConfigURL) ─────────────────────────────────────────────
-//
-// We only need to *clear* AutoConfigURL — `clear_proxy` already takes
-// care of disabling the legacy ProxyEnable / ProxyServer pair, and
-// the per-connection API below is what actually flips browsers over
-// to (or off of) the PAC file. Writing the top-level `AutoConfigURL`
-// string is a belt-and-suspenders courtesy for tools that read the
-// registry directly (see the per-connection comment block below).
-
+/// Delete the top-level `AutoConfigURL` registry value (belt-and-
+/// suspenders cleanup; the per-connection API is the real mechanism
+/// that browsers query).
+///
+/// We only need to *clear* AutoConfigURL — `clear_proxy` already takes
+/// care of disabling the legacy ProxyEnable / ProxyServer pair, and
+/// the per-connection API below is what actually flips browsers over
+/// to (or off of) the PAC file. Writing the top-level `AutoConfigURL`
+/// string is a belt-and-suspenders courtesy for tools that read the
+/// registry directly (see the per-connection comment block below).
 pub fn clear_pac_url() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let key = open_key()?;
     key.delete_value(AUTO_CONFIG_URL).ok();
     Ok(())
 }
 
-// ─── Per-connection proxy settings (real mechanism) ──────────────────
-//
-// The top-level `AutoConfigURL` string value is the documentation
-// surface; the **actual** mechanism browsers (Edge, Chrome) use to
-// pick up the PAC is the per-connection binary blob at
-// `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\
-//  Connections\DefaultConnectionSettings`. Writing only the string
-// leaves browsers using the stale blob from before the focus session
-// started — symptom: bilibili.com still loads because the running
-// browser never re-reads the PAC.
-//
-// The correct API is `InternetSetOptionW` with
-// `INTERNET_OPTION_PER_CONNECTION_OPTION` and an
-// `INTERNET_PER_CONN_OPTION_LISTW` containing one option whose
-// `dwOption = INTERNET_PER_CONN_AUTOCONFIG_URL`. `pszConnection = NULL`
-// targets the default (LAN) connection — which is exactly what
-// `Internet Options → Connections → LAN settings` writes to, and what
-// browsers query.
-//
-// We still write the top-level string for compatibility with tools
-// that read it (the WinHTTP / `.NET GetSystemWebProxy` paths, plus
-// any direct registry inspectors). Belt and suspenders.
-//
-// To clear: same API, but the option's value is set to an empty
-// string. `INTERNET_PER_CONN_FLAGS_UI` is *not* the right toggle —
-// that controls "show settings dialog on connect", not PAC presence.
+/// Apply the given PAC URL to the system proxy via the per-connection
+/// binary blob (the real mechanism Edge/Chrome use), then notify
+/// running browsers.
+///
+/// The top-level `AutoConfigURL` string value is the documentation
+/// surface; the **actual** mechanism browsers (Edge, Chrome) use to
+/// pick up the PAC is the per-connection binary blob at
+/// `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\
+///  Connections\DefaultConnectionSettings`. Writing only the string
+/// leaves browsers using the stale blob from before the focus session
+/// started — symptom: bilibili.com still loads because the running
+/// browser never re-reads the PAC.
+///
+/// The correct API is `InternetSetOptionW` with
+/// `INTERNET_OPTION_PER_CONNECTION_OPTION` and an
+/// `INTERNET_PER_CONN_OPTION_LISTW` containing one option whose
+/// `dwOption = INTERNET_PER_CONN_AUTOCONFIG_URL`. `pszConnection = NULL`
+/// targets the default (LAN) connection — which is exactly what
+/// `Internet Options → Connections → LAN settings` writes to, and what
+/// browsers query.
+///
+/// We still write the top-level string for compatibility with tools
+/// that read it (the WinHTTP / `.NET GetSystemWebProxy` paths, plus
+/// any direct registry inspectors). Belt and suspenders.
+///
+/// To clear: same API, but the option's value is set to an empty
+/// string. `INTERNET_PER_CONN_FLAGS_UI` is *not* the right toggle —
+/// that controls "show settings dialog on connect", not PAC presence.
 #[cfg(windows)]
 pub fn set_pac_url_per_connection(url: &str) {
     use windows::core::PWSTR;
@@ -178,25 +181,26 @@ pub fn clear_pac_url_per_connection() {
     set_pac_url_per_connection("");
 }
 
-// ─── WinINET cache invalidation ─────────────────────────────────────
-//
-// WinINET-based clients (Chrome, Edge, the system's own HTTP stack)
-// cache proxy settings per-process. Writing to the registry is not
-// enough — without an explicit `InternetSetOptionW` broadcast, an
-// already-running browser will continue using whatever proxy state it
-// captured at launch until its cache TTL expires (often 30+ minutes)
-// or the browser is restarted.
-//
-// `INTERNET_OPTION_SETTINGS_CHANGED` is the documented broadcast: it
-// emits WM_SETTINGCHANGE so all interested processes re-read the
-// proxy registry. Clash, mitmproxy, and every Windows VPN client
-// uses this — leaving it out is the most common cause of "I set the
-// proxy but the browser still ignores it."
-//
-// Per MS docs the call must be: hInternet=NULL, lpBuffer=NULL,
-// dwBufferLength=0. We ignore the BOOL return — failures here are
-// not actionable (the registry write already succeeded; worst case
-// the user has to wait for the cache TTL or restart the browser).
+/// Broadcast a proxy-changed notification so running browsers pick
+/// up the new PAC / ProxyServer settings immediately.
+///
+/// WinINET-based clients (Chrome, Edge, the system's own HTTP stack)
+/// cache proxy settings per-process. Writing to the registry is not
+/// enough — without an explicit `InternetSetOptionW` broadcast, an
+/// already-running browser will continue using whatever proxy state
+/// it captured at launch until its cache TTL expires (often 30+
+/// minutes) or the browser is restarted.
+///
+/// `INTERNET_OPTION_SETTINGS_CHANGED` is the documented broadcast: it
+/// emits WM_SETTINGCHANGE so all interested processes re-read the
+/// proxy registry. Clash, mitmproxy, and every Windows VPN client
+/// uses this — leaving it out is the most common cause of "I set the
+/// proxy but the browser still ignores it."
+///
+/// Per MS docs the call must be: hInternet=NULL, lpBuffer=NULL,
+/// dwBufferLength=0. We ignore the BOOL return — failures here are
+/// not actionable (the registry write already succeeded; worst case
+/// the user has to wait for the cache TTL or restart the browser).
 #[cfg(windows)]
 pub fn notify_proxy_changed() {
     use windows::Win32::Networking::WinInet::{
