@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import FirstRunGuide from "./FirstRunGuide";
 import "./Layout.css";
 
 const NAV = [
@@ -6,7 +7,6 @@ const NAV = [
   { to: "/rules", label: "Rules" },
   { to: "/quotas", label: "Quotas" },
   { to: "/stats", label: "Stats" },
-  { to: "/settings", label: "Settings" },
 ];
 
 export default function Layout() {
@@ -30,6 +30,7 @@ export default function Layout() {
         </nav>
       </header>
       <main className="app-main">
+        <FirstRunGuide />
         <Outlet />
       </main>
     </div>

@@ -101,3 +101,107 @@ fn unknown_match_type_yields_false() {
     let r = rule("url", "twitter.com", "frobnicate");
     assert!(!matches_url(&r, "https://twitter.com"));
 }
+
+#[test]
+fn title_exact_match() {
+    let r = rule("title", "YouTube — Music", "exact");
+    assert!(matches_title(&r, "YouTube — Music"));
+    assert!(!matches_title(&r, "YouTube — Home"));
+}
+
+#[test]
+fn title_contains_match() {
+    let r = rule("title", "Music", "contains");
+    assert!(matches_title(&r, "YouTube — Music"));
+    assert!(matches_title(&r, "Spotify - Music for everyone"));
+    assert!(!matches_title(&r, "YouTube — Home"));
+}
+
+#[test]
+fn title_regex_match() {
+    let r = rule("title", r"YouTube\s*[-—]\s*Music", "regex");
+    assert!(matches_title(&r, "YouTube — Music"));
+    assert!(matches_title(&r, "YouTube -  Music"));
+    assert!(!matches_title(&r, "YouTube — Home"));
+}
+
+#[test]
+fn title_rule_does_not_match_url_or_app() {
+    let r = rule("title", "Music", "contains");
+    assert!(!matches_url(&r, "https://example.com/Music"));
+    assert!(!matches_app(&r, "C:\\Path\\Music.exe"));
+}
+
+#[test]
+fn title_invalid_regex_yields_false() {
+    let r = rule("title", "[invalid(regex", "regex");
+    assert!(!matches_title(&r, "anything"));
+}
+
+#[test]
+fn title_unknown_match_type_yields_false() {
+    let r = rule("title", "Music", "frobnicate");
+    assert!(!matches_title(&r, "YouTube — Music"));
+}
+
+// ─── `kind=url` host-vs-host fallback ───────────────────────────────────
+//
+// A user typing `https://www.bilibili.com/` into a `kind=url` rule
+// expects the whole domain blocked. Without the fallback, the literal
+// substring matcher only catches requests whose URL string contains
+// `https://www.bilibili.com/` — so `http://www.bilibili.com/` slips
+// past. The fallback extracts host from both sides and compares.
+
+#[test]
+fn url_rule_with_scheme_blocks_http_request() {
+    let r = rule("url", "https://www.bilibili.com/", "contains");
+    assert!(matches_url(&r, "http://www.bilibili.com/"));
+    assert!(matches_url(&r, "http://www.bilibili.com"));
+    assert!(matches_url(&r, "https://www.bilibili.com/"));
+}
+
+#[test]
+fn url_rule_with_scheme_blocks_request_with_path() {
+    let r = rule("url", "https://www.bilibili.com/", "contains");
+    assert!(matches_url(&r, "https://www.bilibili.com/video/BV1xx"));
+}
+
+#[test]
+fn url_rule_with_path_does_not_expand_to_whole_host() {
+    // Path-specific rule must not silently grow to cover the whole host.
+    let r = rule("url", "https://twitter.com/home", "contains");
+    assert!(matches_url(&r, "https://twitter.com/home"));
+    assert!(!matches_url(&r, "https://twitter.com/explore"));
+    assert!(!matches_url(&r, "https://twitter.com/"));
+}
+
+#[test]
+fn url_rule_with_scheme_exact_blocks_http_request() {
+    // The fallback should also apply for exact match — the user typed
+    // a URL-with-scheme; they're describing a domain.
+    let r = rule("url", "https://www.bilibili.com/", "exact");
+    assert!(matches_url(&r, "http://www.bilibili.com/"));
+    assert!(!matches_url(&r, "https://other.com/"));
+}
+
+#[test]
+fn url_rule_with_scheme_regex_does_not_apply_host_fallback() {
+    // Regex is precise: a regex explicitly anchored to https:// must NOT
+    // silently expand to cover http:// — that would contradict the
+    // user's explicit pattern. The fallback only applies to contains/exact.
+    let r = rule("url", r"^https://www\.bilibili\.com/?$", "regex");
+    assert!(matches_url(&r, "https://www.bilibili.com/"));
+    assert!(!matches_url(&r, "http://www.bilibili.com/"));
+}
+
+#[test]
+fn url_rule_host_fallback_is_case_insensitive() {
+    let r = rule("url", "https://WWW.Bilibili.com/", "contains");
+    assert!(matches_url(&r, "http://www.bilibili.com/some/path"));
+}
+
+#[test]
+fn url_rule_host_fallback_strips_port() {
+    let r = rule("url", "https://bilibili.com/", "contains");
+    assert!(matches_url(&r, "http://bilibili.com:8080/"));
+}

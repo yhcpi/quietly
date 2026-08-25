@@ -62,8 +62,8 @@ pub fn setup<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     TrayAction::Quit => {
                         // Tear down focus session, guard, and proxy BEFORE
                         // exiting. Without this, an in-flight focus session
-                        // strands the user's system proxy at 127.0.0.1:47820
-                        // until the next launch reap-and-restore.
+                        // strands the user's system proxy at the local
+                        // proxy port until the next launch reap-and-restore.
                         //
                         // The menu-event closure hands us `&AppHandle`, which
                         // is only valid inside the closure. Clone it, then

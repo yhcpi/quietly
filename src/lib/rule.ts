@@ -2,10 +2,14 @@ import type { BlockRule } from "../types";
 
 export type RuleDraft = Omit<BlockRule, "id" | "created_at">;
 
+// Kinds selectable in the block-rule form. `whitelist` is deliberately
+// absent — whitelist rules are created from the Rules page's Whitelist
+// tab, which pins the kind.
 export const RULE_KINDS: ReadonlyArray<BlockRule["kind"]> = [
   "url",
   "domain",
   "app_path",
+  "title",
 ];
 
 export const RULE_MATCH_TYPES: ReadonlyArray<BlockRule["match_type"]> = [

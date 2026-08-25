@@ -9,7 +9,6 @@ function hitAtUnix(unixSeconds: number): BlockHit {
     kind: "url",
     target: "x",
     rule_id: null,
-    schedule_id: null,
   };
 }
 

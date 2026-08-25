@@ -41,19 +41,7 @@ mkdir "%PORTABLE_DIR%"
 echo.
 echo [3/4] Copying artifacts ...
 copy /y "%EXE%" "%PORTABLE_DIR%\quietly.exe" >nul
-
-(
-  echo Quietly - Portable Edition
-  echo ===========================
-  echo.
-  echo Run quietly.exe to start. No installation required.
-  echo.
-  echo System requirements:
-  echo   - Windows 10 1809+ or Windows 11
-  echo   - Microsoft Edge WebView2 Runtime (preinstalled on most systems)
-  echo.
-  echo Data is stored in %%APPDATA%%\com.quietly.app\
-) > "%PORTABLE_DIR%\README.txt"
+copy /y "scripts\README.txt" "%PORTABLE_DIR%\README.txt" >nul
 
 echo.
 echo [4/4] Creating ZIP %ZIP_PATH% ...

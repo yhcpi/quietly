@@ -20,8 +20,8 @@ describe("blankRule", () => {
 });
 
 describe("RULE_KINDS / RULE_MATCH_TYPES", () => {
-  it("RULE_KINDS lists the three valid kinds", () => {
-    expect(RULE_KINDS).toEqual(["url", "domain", "app_path"]);
+  it("RULE_KINDS lists the form-selectable kinds", () => {
+    expect(RULE_KINDS).toEqual(["url", "domain", "app_path", "title"]);
   });
 
   it("RULE_MATCH_TYPES lists the three valid match types", () => {

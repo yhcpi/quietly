@@ -14,6 +14,23 @@ dist-portable/
 # Verification artifacts (Playwright screenshots taken outside of tests)
 .playwright-mcp/
 
+# Session-local scratch (debug captures, smoke runs, ad-hoc screenshots)
+src-tauri/*.txt
+src-tauri/scripts/
+scripts/_*.png
+scripts/_*.cjs
+scripts/_*.err
+scripts/_*.out
+scripts/_cdp_shots/
+scripts/cdp_*.py
+scripts/smoke_*.py
+scripts/diagnose_*.py
+scripts/drive_*.py
+scripts/proxy_verify_*
+scripts/verify_*.cjs
+scripts/test_*.cjs
+scripts/test_*.py
+
 # Environment
 .env
 .env.local
@@ -21,3 +38,4 @@ dist-portable/
 
 # Superpowers process metadata (briefs, reports, progress ledger — session-local)
 .superpowers/
+.design/

@@ -51,6 +51,114 @@ fn should_block_host_ignores_inactive_rules() {
     assert!(!should_block_host("twitter.com", &rules));
 }
 
+// HTTPS requests arrive as "CONNECT host:port" — the proxy never sees the
+// full URL on the wire, only the host. A url-kind rule with a full URL
+// pattern ("https://x.com/path") MUST still block CONNECT to x.com, or it
+// is silently a no-op on every HTTPS site. This was the bug behind
+// "block rules not working": user creates url-kind rule, browser visits
+// HTTPS site, nothing blocks.
+#[test]
+fn should_block_host_matches_url_kind_rule_by_host() {
+    let rules = vec![rule("url", "https://www.bilibili.com/", "contains", true)];
+    assert!(should_block_host("www.bilibili.com:443", &rules));
+    assert!(!should_block_host("www.youtube.com:443", &rules));
+}
+
+#[test]
+fn should_block_host_matches_url_kind_rule_strips_trailing_slash() {
+    let rules = vec![rule("url", "https://twitter.com/timeline", "contains", true)];
+    // Host extracted from pattern is "twitter.com" — that's what we match against.
+    assert!(should_block_host("twitter.com:443", &rules));
+    assert!(!should_block_host("facebook.com:443", &rules));
+}
+
+#[test]
+fn should_block_host_does_not_subdomain_match_url_rule() {
+    // "www.bilibili.com" rule should NOT also block api.bilibili.com —
+    // user picked the specific subdomain deliberately. (For MVP we err on
+    // the strict side; subdomain wildcarding can be added later.)
+    let rules = vec![rule("url", "https://www.bilibili.com/", "contains", true)];
+    assert!(!should_block_host("api.bilibili.com:443", &rules));
+}
+
+// ─── whitelist precedence ──────────────────────────────────────────
+// A matching active whitelist rule must short-circuit the block
+// decision — the user's allow-list always wins over deny rules, even
+// when both would otherwise match.
+
+#[test]
+fn should_block_url_whitelist_overrides_block() {
+    let rules = vec![
+        rule("url", "twitter.com", "contains", true),
+        rule("whitelist", "twitter.com", "contains", true),
+    ];
+    assert!(!should_block_url("https://twitter.com/foo", &rules));
+    assert!(!should_block_url("https://twitter.com", &rules));
+}
+
+#[test]
+fn should_block_url_whitelist_does_not_match_then_block_applies() {
+    let rules = vec![
+        rule("url", "twitter.com", "contains", true),
+        rule("whitelist", "facebook.com", "contains", true),
+    ];
+    assert!(should_block_url("https://twitter.com/foo", &rules));
+    assert!(!should_block_url("https://facebook.com/foo", &rules));
+}
+
+#[test]
+fn should_block_url_whitelist_inactive_is_ignored() {
+    let rules = vec![
+        rule("url", "twitter.com", "contains", true),
+        rule("whitelist", "twitter.com", "contains", false),
+    ];
+    assert!(should_block_url("https://twitter.com/foo", &rules));
+}
+
+#[test]
+fn should_block_url_whitelist_exact_overrides_block_contains() {
+    let rules = vec![
+        rule("url", "twitter.com", "contains", true),
+        rule("whitelist", "https://twitter.com/allowed", "exact", true),
+    ];
+    assert!(!should_block_url("https://twitter.com/allowed", &rules));
+    assert!(should_block_url("https://twitter.com/foo", &rules));
+}
+
+#[test]
+fn should_block_host_whitelist_overrides_block() {
+    let rules = vec![
+        rule("domain", "twitter.com", "exact", true),
+        rule("whitelist", "twitter.com", "contains", true),
+    ];
+    assert!(!should_block_host("twitter.com:443", &rules));
+}
+
+#[test]
+fn should_block_host_whitelist_does_not_match_then_block_applies() {
+    let rules = vec![
+        rule("domain", "twitter.com", "exact", true),
+        rule("whitelist", "facebook.com", "contains", true),
+    ];
+    assert!(should_block_host("twitter.com:443", &rules));
+    assert!(!should_block_host("facebook.com:443", &rules));
+}
+
+#[test]
+fn should_block_host_whitelist_url_kind_rule_by_host() {
+    let rules = vec![
+        rule("url", "https://www.bilibili.com/", "contains", true),
+        rule("whitelist", "bilibili.com", "contains", true),
+    ];
+    // url-kind block rule AND a whitelist that covers its host → not blocked.
+    assert!(!should_block_host("www.bilibili.com:443", &rules));
+    // YouTube has neither block rule nor whitelist → not blocked.
+    assert!(!should_block_host("www.youtube.com:443", &rules));
+    // Sanity check: a plain block rule on YouTube still blocks.
+    let only_block = vec![rule("url", "https://www.youtube.com/", "contains", true)];
+    assert!(should_block_host("www.youtube.com:443", &only_block));
+}
+
 #[test]
 fn parse_connect_host_extracts_target() {
     assert_eq!(parse_connect_host("CONNECT twitter.com:443 HTTP/1.1"), Some("twitter.com:443".to_string()));

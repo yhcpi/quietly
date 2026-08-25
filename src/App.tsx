@@ -2,9 +2,8 @@ import { Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
 import Timer from "./routes/Timer";
 import Rules from "./routes/Rules";
-import Schedules from "./routes/Schedules";
+import Quotas from "./routes/Quotas";
 import Stats from "./routes/Stats";
-import Settings from "./routes/Settings";
 
 export default function App() {
   return (
@@ -12,9 +11,8 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Timer />} />
         <Route path="/rules" element={<Rules />} />
-        <Route path="/schedules" element={<Schedules />} />
+        <Route path="/quotas" element={<Quotas />} />
         <Route path="/stats" element={<Stats />} />
-        <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
   );

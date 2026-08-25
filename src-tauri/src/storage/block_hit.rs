@@ -10,7 +10,6 @@ pub struct BlockHit {
     pub kind: String,
     pub target: String,
     pub rule_id: Option<i64>,
-    pub schedule_id: Option<i64>,
 }
 
 fn now() -> i64 {
@@ -18,18 +17,18 @@ fn now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
 }
 
-pub fn log(pool: &DbPool, kind: &str, target: &str, rule_id: Option<i64>, schedule_id: Option<i64>) -> Result<()> {
+pub fn log(pool: &DbPool, kind: &str, target: &str, rule_id: Option<i64>) -> Result<()> {
     let conn = pool.get()?;
     conn.execute(
-        "INSERT INTO block_hit (ts, kind, target, rule_id, schedule_id) VALUES (?1,?2,?3,?4,?5)",
-        params![now(), kind, target, rule_id, schedule_id])?;
+        "INSERT INTO block_hit (ts, kind, target, rule_id) VALUES (?1,?2,?3,?4)",
+        params![now(), kind, target, rule_id])?;
     Ok(())
 }
 
 pub fn list_recent(pool: &DbPool, since_ts: i64, limit: i64) -> Result<Vec<BlockHit>> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
-        "SELECT id, ts, kind, target, rule_id, schedule_id
+        "SELECT id, ts, kind, target, rule_id
          FROM block_hit WHERE ts >= ?1 ORDER BY ts DESC LIMIT ?2")?;
     let rows = stmt.query_map(params![since_ts, limit], |row| {
         Ok(BlockHit {
@@ -38,7 +37,6 @@ pub fn list_recent(pool: &DbPool, since_ts: i64, limit: i64) -> Result<Vec<Block
             kind: row.get(2)?,
             target: row.get(3)?,
             rule_id: row.get(4)?,
-            schedule_id: row.get(5)?,
         })
     })?;
     let mut out = Vec::new();
