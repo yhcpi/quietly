@@ -40,6 +40,9 @@ pub fn set_proxy(server: &str) -> Result<(), Box<dyn std::error::Error + Send + 
 pub fn clear_proxy() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let key = open_key()?;
     key.set_value("ProxyEnable", &0u32)?;
+    // Delete ProxyServer so we don't leave a stale string that would
+    // activate on the next ProxyEnable flip by another tool.
+    key.delete_value("ProxyServer").ok();
     Ok(())
 }
 
@@ -59,24 +62,12 @@ pub fn restore(snap: &ProxySnapshot) -> Result<(), Box<dyn std::error::Error + S
 
 // ─── PAC (AutoConfigURL) ─────────────────────────────────────────────
 //
-// These set / clear the `AutoConfigURL` registry value. Compared with
-// the legacy `ProxyEnable` / `ProxyServer` pair, PAC has two huge wins:
-//  1. PAC is a *file path*, not a hard proxy. If Quietly's proxy
-//     process dies, the PAC file on disk is still a valid JS
-//     function and browsers fall back to DIRECT for unblocked hosts.
-//     The user keeps browsing — they just lose blocking enforcement
-//     until Quietly is restarted.
-//  2. PAC is the same setting the user's VPN / Clash / mitmproxy
-//     tooling uses (AutoConfigURL). We don't clobber their
-//     ProxyServer / ProxyOverride on every focus session — those
-//     only matter when AutoConfigURL is unset, so we leave them
-//     alone.
-
-pub fn set_pac_url(file_url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let key = open_key()?;
-    key.set_value(AUTO_CONFIG_URL, &file_url.to_string())?;
-    Ok(())
-}
+// We only need to *clear* AutoConfigURL — `clear_proxy` already takes
+// care of disabling the legacy ProxyEnable / ProxyServer pair, and
+// the per-connection API below is what actually flips browsers over
+// to (or off of) the PAC file. Writing the top-level `AutoConfigURL`
+// string is a belt-and-suspenders courtesy for tools that read the
+// registry directly (see the per-connection comment block below).
 
 pub fn clear_pac_url() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let key = open_key()?;
@@ -142,13 +133,13 @@ pub fn set_pac_url_per_connection(url: &str) {
         // fall back to direct if PAC fails".
         const PROXY_TYPE_AUTO_PROXY_URL: u32 = 0x04;
 
-        let mut flags_option = INTERNET_PER_CONN_OPTIONW {
+        let flags_option = INTERNET_PER_CONN_OPTIONW {
             dwOption: INTERNET_PER_CONN_FLAGS,
             Value: windows::Win32::Networking::WinInet::INTERNET_PER_CONN_OPTIONW_0 {
                 dwValue: PROXY_TYPE_AUTO_PROXY_URL,
             },
         };
-        let mut url_option = INTERNET_PER_CONN_OPTIONW {
+        let url_option = INTERNET_PER_CONN_OPTIONW {
             dwOption: INTERNET_PER_CONN_AUTOCONFIG_URL,
             Value: windows::Win32::Networking::WinInet::INTERNET_PER_CONN_OPTIONW_0 {
                 pszValue: PWSTR(wide.as_ptr() as *mut _),
@@ -185,14 +176,6 @@ pub fn set_pac_url_per_connection(_url: &str) {}
 #[cfg(windows)]
 pub fn clear_pac_url_per_connection() {
     set_pac_url_per_connection("");
-}
-
-pub fn read_pac_url() -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let key = open_key()?;
-    match key.get_value::<String, _>(AUTO_CONFIG_URL) {
-        Ok(s) if !s.is_empty() => Ok(Some(s)),
-        _ => Ok(None),
-    }
 }
 
 // ─── WinINET cache invalidation ─────────────────────────────────────

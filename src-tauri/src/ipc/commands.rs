@@ -7,7 +7,6 @@ use crate::storage::{
     block_rule::{self, BlockRule},
     session::{self, Session},
     block_hit::{self, BlockHit},
-    settings,
     db::DbPool,
     app_quota::{self, AppQuota},
     usage_log,
@@ -17,7 +16,7 @@ use crate::engine::pac;
 use crate::engine::proxy::{self, ProxyHandle};
 use crate::engine::proxy_state::{self, ProxySnapshot};
 use crate::engine::guard::{self, GuardHandle};
-use crate::engine::app_usage::{self, UsageHandle};
+use crate::engine::app_usage::{self, UsageHandle, now_ts, today_local};
 
 pub struct AppState {
     pub db: DbPool,
@@ -113,33 +112,14 @@ pub async fn set_block_rule_active_inner(state: &AppState, id: i64, active: bool
     Ok(())
 }
 
-// ─── settings ─────────────────────────────────────────────────────────
-
-pub fn get_settings_inner(state: &AppState) -> Result<serde_json::Value, String> {
-    let mut map = serde_json::Map::new();
-    let stored = settings::get(&state.db, "json").unwrap_or_default();
-    if let Some(s) = stored {
-        let parsed: serde_json::Value = serde_json::from_str(&s).map_err(err)?;
-        if let serde_json::Value::Object(obj) = parsed {
-            map.extend(obj);
-        }
-    }
-    Ok(serde_json::Value::Object(map))
-}
-
-pub fn set_settings_inner(state: &AppState, value: serde_json::Value) -> Result<(), String> {
-    let s = serde_json::to_string(&value).map_err(err)?;
-    settings::set(&state.db, "json", &s).map_err(err)
-}
-
 // ─── first-run ack ────────────────────────────────────────────────────
 
-pub fn needs_first_run_ack_inner(state: &AppState) -> Result<bool, String> {
-    Ok(settings::get(&state.db, "first_run_acked").map_err(err)?.is_none())
+pub fn needs_first_run_ack_inner(app_data_dir: &std::path::Path) -> Result<bool, String> {
+    Ok(storage::first_run::needs_ack(app_data_dir))
 }
 
-pub fn ack_first_run_inner(state: &AppState) -> Result<(), String> {
-    settings::set(&state.db, "first_run_acked", "1").map_err(err)
+pub fn ack_first_run_inner(app_data_dir: &std::path::Path) -> Result<(), String> {
+    storage::first_run::mark_acked(app_data_dir).map_err(err)
 }
 
 // ─── block hits ───────────────────────────────────────────────────────
@@ -172,11 +152,6 @@ pub fn get_stats_inner(state: &AppState, _range: String) -> Result<serde_json::V
         "focus_minutes_today": total_focus_seconds / 60,
         "blocks_today": hits.len() as i64,
     }))
-}
-
-fn now_ts() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
 }
 
 // ─── focus timer (state) ─────────────────────────────────────────────
@@ -269,7 +244,7 @@ pub async fn start_focus_inner(
         }
         let id = session::start(&state.db, "focus", duration_min as i64 * 60).map_err(err)?;
         let cfg = TimerConfig { focus_min: duration_min, short_break_min: 5, long_break_min: 15, cycles_before_long: 4 };
-        let handle = TimerHandle::start(app.clone(), cfg, locked, phase_cb);
+        let handle = TimerHandle::start(app.clone(), cfg, locked, id, phase_cb);
         *guard = Some(handle);
         id
     };
@@ -322,8 +297,12 @@ pub fn cancel_focus_inner(state: &AppState) -> Result<(), String> {
         *guard = Some(h);
         return Err("session is locked — cancel disabled".into());
     }
+    let session_id = h.session_id;
     drop(guard); // release mutex before returning; handle is consumed by cancel()
 
+    if let Some(sid) = session_id {
+        let _ = session::end(&state.db, sid, false);
+    }
     h.cancel();
 
     Ok(())
@@ -364,7 +343,13 @@ pub async fn start_proxy_inner(state: &AppState, app: AppHandle, port: u16) -> R
         }
     }
 
-    let app_data = app.path().app_data_dir().map_err(err)?;
+    let app_data = state.app_data_dir.clone();
+
+    // Bind the local listener FIRST. `port=0` requests a kernel-assigned
+    // port; the actual value comes back on the handle. We can't write
+    // the PAC / HKCU ProxyServer / marker until we know the real port.
+    let handle = proxy::start(app.clone(), port, state.rules.clone(), Arc::new(state.app_data_dir.clone())).await.map_err(err)?;
+    let actual_port = handle.addr().port();
 
     // Capture the user's pre-existing HKCU ProxyEnable / ProxyServer
     // state so we can restore it on stop_proxy (and on crash recovery
@@ -385,7 +370,7 @@ pub async fn start_proxy_inner(state: &AppState, app: AppHandle, port: u16) -> R
     // makes the IPC call hang forever. (This was the root cause of
     // "start_focus hangs and the proxy never comes up".)
     let rules = state.rules.read().await.clone();
-    let _pac_path = pac::write(&app_data, &rules).map_err(err)?;
+    let _pac_path = pac::write(&app_data, &rules, actual_port).map_err(err)?;
 
     // Active mechanism: HKCU ProxyEnable=1 + ProxyServer=127.0.0.1:<port>.
     //
@@ -408,7 +393,7 @@ pub async fn start_proxy_inner(state: &AppState, app: AppHandle, port: u16) -> R
     //      crash case (stale marker → restore from snapshot).
     //   3. The tray Quit menu item invokes `graceful_shutdown` which
     //      calls stop_proxy — so a clean exit always restores.
-    let proxy_spec = format!("127.0.0.1:{}", port);
+    let proxy_spec = format!("127.0.0.1:{}", actual_port);
     proxy_state::set_proxy(&proxy_spec).map_err(err)?;
 
     // WinINET cache invalidation: writing to HKCU is not enough —
@@ -429,11 +414,8 @@ pub async fn start_proxy_inner(state: &AppState, app: AppHandle, port: u16) -> R
     // "the previous session died mid-flight" and restore from it.
     let _ = storage::proxy_marker::write(
         &app_data,
-        &storage::proxy_marker::ProxyMarker { port, snapshot: snap },
+        &storage::proxy_marker::ProxyMarker { port: actual_port, snapshot: snap },
     );
-
-    // Start local proxy
-    let handle = proxy::start(app.clone(), port, state.rules.clone()).await.map_err(err)?;
 
     // App-usage tracker is started once on app setup (lib.rs) and runs
     // for the lifetime of the process — independent of any focus
@@ -488,7 +470,7 @@ pub async fn stop_proxy_inner(state: &AppState) -> Result<(), String> {
     let _ = tokio::task::spawn_blocking(proxy_state::clear_pac_url_per_connection).await;
     // Same WinINET cache invalidation as start_proxy_inner — running
     // browsers must drop their cached proxy reference so subsequent
-    // requests don't keep hitting our (now-dead) 47820 listener.
+    // requests don't keep hitting our (now-dead) local proxy listener.
     // On the blocking pool so the synchronous broadcast doesn't
     // stall the async runtime.
     let _ = tokio::task::spawn_blocking(proxy_state::notify_proxy_changed).await;
@@ -572,28 +554,20 @@ pub async fn set_block_rule_active(state: State<'_, AppState>, id: i64, active: 
 }
 
 #[tauri::command]
-pub fn get_settings(state: State<AppState>) -> Result<serde_json::Value, String> {
-    get_settings_inner(&state)
-}
-
-#[tauri::command]
-pub fn set_settings(state: State<AppState>, settings: serde_json::Value) -> Result<(), String> {
-    set_settings_inner(&state, settings)
-}
-
-#[tauri::command]
 pub fn get_stats(state: State<AppState>, range: String) -> Result<serde_json::Value, String> {
     get_stats_inner(&state, range)
 }
 
 #[tauri::command]
-pub fn needs_first_run_ack(state: State<AppState>) -> Result<bool, String> {
-    needs_first_run_ack_inner(&state)
+pub fn needs_first_run_ack(app: AppHandle) -> Result<bool, String> {
+    let path = app.path().app_data_dir().map_err(err)?;
+    needs_first_run_ack_inner(&path)
 }
 
 #[tauri::command]
-pub fn ack_first_run(state: State<AppState>) -> Result<(), String> {
-    ack_first_run_inner(&state)
+pub fn ack_first_run(app: AppHandle) -> Result<(), String> {
+    let path = app.path().app_data_dir().map_err(err)?;
+    ack_first_run_inner(&path)
 }
 
 #[tauri::command]
@@ -812,13 +786,6 @@ pub fn get_usage_stats_inner(state: &AppState, range: String) -> Result<Vec<Usag
         }
     }
     Ok(out)
-}
-
-// ─── local-time helpers ──────────────────────────────────────────────
-
-fn today_local() -> String {
-    use chrono::Local;
-    Local::now().format("%Y-%m-%d").to_string()
 }
 
 // ─── Tauri command wrappers (new) ────────────────────────────────────

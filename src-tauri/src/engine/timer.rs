@@ -154,16 +154,27 @@ impl TimerEngine {
         on_tick: impl Fn(TimerState) + Send + 'static,
         on_phase_change: impl Fn(Phase, Phase) + Send + 'static,
     ) {
+        let mut last_emitted_status: Option<TimerStatus> = None;
         let mut ticker = interval(Duration::from_secs(1));
         loop {
             ticker.tick().await;
             if self.cancel_flag.load(Ordering::SeqCst) {
                 break;
             }
+            let cur_status = self.state().status;
+            if last_emitted_status.as_ref() != Some(&cur_status) {
+                on_tick(self.state());
+                last_emitted_status = Some(cur_status);
+            }
             while self.pause_flag.load(Ordering::SeqCst) {
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 if self.cancel_flag.load(Ordering::SeqCst) {
                     break;
+                }
+                let cur_status = self.state().status;
+                if last_emitted_status.as_ref() != Some(&cur_status) {
+                    on_tick(self.state());
+                    last_emitted_status = Some(cur_status);
                 }
             }
             if self.cancel_flag.load(Ordering::SeqCst) {
@@ -180,13 +191,36 @@ impl TimerEngine {
 
 pub struct TimerHandle {
     engine: Arc<TimerEngine>,
+    locked: Arc<std::sync::atomic::AtomicBool>,
+    /// DB session row id. `None` for test-only handles built via
+    /// `dummy_for_test`. Used by `cancel_focus_inner` to mark the
+    /// session row as ended on the cancel path.
+    pub(crate) session_id: Option<i64>,
     _task: tokio::task::JoinHandle<()>,
 }
 
 impl TimerHandle {
-    pub fn start(app: AppHandle, cfg: TimerConfig) -> Self {
+    /// Sentinel for "let the kernel assign an available port" passed
+    /// to `proxy::start`. The actual port is read back from
+    /// `ProxyHandle.addr().port()` and threaded into the PAC body,
+    /// HKCU ProxyServer, and the crash-recovery marker.
+    pub const AUTO_BLOCK_PROXY_PORT: u16 = 0;
+
+    /// Start the timer. `on_phase_change_extra`, if provided, is invoked
+    /// alongside the built-in `timer-phase-changed` emit on every phase
+    /// transition. Used by `start_focus_inner(auto_block=true)` to bring
+    /// the proxy+guard shield up on Focus and down on breaks without
+    /// having to touch the engine's run_loop.
+    pub fn start(
+        app: AppHandle,
+        cfg: TimerConfig,
+        locked: bool,
+        session_id: i64,
+        on_phase_change_extra: Option<Box<dyn Fn(Phase, Phase) + Send + 'static>>,
+    ) -> Self {
         let engine = Arc::new(TimerEngine::new(cfg));
         let engine_for_task = engine.clone();
+        let locked_flag = Arc::new(std::sync::atomic::AtomicBool::new(locked));
         let task = tokio::spawn(async move {
             engine_for_task
                 .run_loop(
@@ -200,16 +234,44 @@ impl TimerHandle {
                         let app = app.clone();
                         move |old, new| {
                             let _ = app.emit("timer-phase-changed", (old, new));
+                            if let Some(cb) = on_phase_change_extra.as_ref() {
+                                cb(old, new);
+                            }
                         }
                     },
                 )
                 .await;
         });
-        Self { engine, _task: task }
+        Self { engine, locked: locked_flag, session_id: Some(session_id), _task: task }
     }
 
     pub fn state(&self) -> TimerState {
         self.engine.state()
+    }
+
+    /// True if the session was started with `locked=true`. `cancel_focus_inner`
+    /// consults this to decide whether to honour a cancel request.
+    pub fn is_locked(&self) -> bool {
+        self.locked.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Toggle the locked flag on a live session. Currently unused — MVP
+    /// locks at start and holds until the session ends — but kept here
+    /// so `set_session_locked_inner` can flip it without re-creating the
+    /// handle.
+    pub fn set_locked(&self, locked: bool) {
+        self.locked.store(locked, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Test-only: no-op handle so integration tests can populate
+    /// `AppState.active_timer` without spinning up a Tauri AppHandle.
+    pub fn dummy_for_test(locked: bool) -> Self {
+        Self {
+            engine: Arc::new(TimerEngine::new(TimerConfig::default())),
+            locked: Arc::new(std::sync::atomic::AtomicBool::new(locked)),
+            session_id: None,
+            _task: tokio::spawn(async {}),
+        }
     }
 
     pub fn pause(&self) {

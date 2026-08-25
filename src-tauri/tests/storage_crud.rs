@@ -1,4 +1,4 @@
-use quietly_lib::storage::{block_rule, schedule, session, block_hit, settings};
+use quietly_lib::storage::{block_rule, session, block_hit};
 use quietly_lib::storage::db;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -32,23 +32,9 @@ fn block_rule_crud() {
 }
 
 #[test]
-fn schedule_crud() {
-    let p = pool();
-    let id = schedule::create(&p, &schedule::Schedule {
-        id: None, name: "Work".into(), kind: "timer".into(),
-        enabled: true, config_json: "{}".into(),
-        block_rule_ids: "".into(), created_at: 0,
-    }).unwrap();
-    assert_eq!(schedule::list(&p).unwrap().len(), 1);
-    assert_eq!(schedule::list_enabled(&p).unwrap().len(), 1);
-    schedule::toggle(&p, id, false).unwrap();
-    assert_eq!(schedule::list_enabled(&p).unwrap().len(), 0);
-}
-
-#[test]
 fn session_lifecycle() {
     let p = pool();
-    let id = session::start(&p, None, "focus", 1500).unwrap();
+    let id = session::start(&p, "focus", 1500).unwrap();
     session::end(&p, id, true).unwrap();
     let s = &session::list_recent(&p, 0).unwrap()[0];
     assert_eq!(s.completed, true);
@@ -57,20 +43,10 @@ fn session_lifecycle() {
 }
 
 #[test]
-fn settings_kv() {
-    let p = pool();
-    settings::set(&p, "proxy_port", "8888").unwrap();
-    assert_eq!(settings::get(&p, "proxy_port").unwrap().as_deref(), Some("8888"));
-    // overwrite
-    settings::set(&p, "proxy_port", "9999").unwrap();
-    assert_eq!(settings::get(&p, "proxy_port").unwrap().as_deref(), Some("9999"));
-}
-
-#[test]
 fn block_hit_log_and_count() {
     let p = pool();
-    block_hit::log(&p, "url", "https://x.com", Some(1), None).unwrap();
-    block_hit::log(&p, "url", "https://y.com", Some(2), None).unwrap();
+    block_hit::log(&p, "url", "https://x.com", Some(1)).unwrap();
+    block_hit::log(&p, "url", "https://y.com", Some(2)).unwrap();
     let recent = block_hit::list_recent(&p, 0, 10).unwrap();
     assert_eq!(recent.len(), 2);
     // count_by_day uses strftime('%Y-%m-%d', ts, 'unixepoch', 'localtime')
