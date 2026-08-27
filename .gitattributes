@@ -1,0 +1,28 @@
+# Force LF for source files regardless of platform. CRLF causes noisy
+# diffs on PRs from Windows editors and breaks tools that key off line
+# endings (.editorconfig mandates lf). Binary formats are pinned too.
+
+# Source
+*.rs       text eol=lf
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.css      text eol=lf
+*.html     text eol=lf
+*.json     text eol=lf
+*.toml     text eol=lf
+*.sql      text eol=lf
+*.md       text eol=lf
+
+# Build / scripts
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.ps1      text eol=crlf
+*.sh       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+
+# Binary formats that must not be touched
+*.png      binary
+*.ico      binary
+*.icns     binary
+*.svg      text eol=lf
