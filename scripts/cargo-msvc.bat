@@ -5,12 +5,16 @@ if errorlevel 1 (
   echo vcvars64.bat failed
   exit /b 1
 )
-REM Drop Git's link.exe (MSYS) so MSVC's wins
+REM Drop Git's link.exe (MSYS) so MSVC's wins. Match by trailing path
+REM segment so this works for any Git-for-Windows install location.
 set "_NEW_PATH="
 for %%P in ("%PATH:;=" "%") do (
   set "P=%%~P"
-  if /i not "!P!"=="D:\ProgramData\Git\usr\bin" if /i not "!P!"=="D:\ProgramData\Git\mingw64\bin" set "_NEW_PATH=!_NEW_PATH!;!P!"
+  set "SKIP="
+  if /i "!P:~-11!"=="Git\usr\bin"    set "SKIP=1"
+  if /i "!P:~-15!"=="Git\mingw64\bin" set "SKIP=1"
+  if not defined SKIP set "_NEW_PATH=!_NEW_PATH!;!P!"
 )
 set "PATH=%_NEW_PATH%"
-set "PATH=C:\Users\yhc\.cargo\bin;%PATH%"
-"C:\Users\yhc\.cargo\bin\cargo.exe" %*
+set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+"%USERPROFILE%\.cargo\bin\cargo.exe" %*
