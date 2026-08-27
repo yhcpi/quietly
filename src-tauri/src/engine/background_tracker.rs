@@ -166,23 +166,17 @@ fn enumerate_running_exes() -> anyhow::Result<HashSet<String>> {
             Ok(_) => String::from_utf16(&buffer[..size as usize]).unwrap_or_default(),
             Err(_) => continue,
         };
-        if let Some(name) = std::path::Path::new(&path).file_name() {
-            // Lowercase so a user-typed "notepad.exe" matches the
-            // OS-reported "Notepad.exe". Windows filenames are
-            // case-insensitive; our quota store is case-sensitive.
-            set.insert(name.to_string_lossy().to_lowercase());
+        if let Some(name) = exe_basename_lower(&path) {
+            set.insert(name);
         }
     }
     Ok(set)
 }
 
-// ─── tests ──────────────────────────────────────────────────────────
-
 /// Extract the lowercase basename from a full process image path.
-/// Used by `enumerate_running_exes` and unit-tested in isolation so
-/// the case-insensitive match against user-typed quota patterns is
-/// regression-locked.
-#[cfg_attr(not(test), allow(dead_code))]
+/// Lowercase is intentional: a user-typed "notepad.exe" must collide
+/// with the OS-reported "Notepad.exe" — Windows filenames are
+/// case-insensitive but our quota store is case-sensitive.
 fn exe_basename_lower(path: &str) -> Option<String> {
     std::path::Path::new(path)
         .file_name()

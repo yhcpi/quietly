@@ -33,12 +33,16 @@ export const setBlockRuleActive = (id: number, active: boolean) =>
   invoke<void>("set_block_rule_active", { id, active });
 
 // ─── first-run ack ──────────────────────────────────────────────
+/** Whether the user still needs to see the first-run guide. */
 export const needsFirstRunAck = () => invoke<boolean>("needs_first_run_ack");
+/** Mark the first-run guide as seen. Subsequent launches skip it. */
 export const ackFirstRun = () => invoke<void>("ack_first_run");
 
 // ─── block hits ─────────────────────────────────────────────────
+/** Recent block events, newest first, filtered by `sinceTs` and capped by `limit`. */
 export const listBlockHits = (sinceTs: number, limit: number) =>
   invoke<BlockHit[]>("list_block_hits", { sinceTs, limit });
+/** Append a block event. `ruleId` is null when the match came from a generic pattern. */
 export const logBlockHit = (
   kind: string,
   target: string,
@@ -73,27 +77,33 @@ export const resumeFocus = () => invoke<void>("resume_focus");
 // On success the Rust side also tears down guard + proxy.
 /** Cancel the running session. Rejects when the session is locked. */
 export const cancelFocus = () => invoke<void>("cancel_focus");
+/** Flip the lock state mid-session. Locked sessions cannot be cancelled. */
 export const setSessionLocked = (locked: boolean) =>
   invoke<void>("set_session_locked", { locked });
+/** Whether the current session is locked against cancellation. */
 export const isSessionLocked = () => invoke<boolean>("is_session_locked");
 
 // ─── proxy ──────────────────────────────────────────────────────
+/** Bind the local HTTP proxy on `port` and start serving traffic. */
 export const startProxy = (port: number) =>
   invoke<void>("start_proxy", { port });
+/** Stop the local proxy and restore the user's previous proxy state. */
 export const stopProxy = () => invoke<void>("stop_proxy");
 
 // ─── guard ──────────────────────────────────────────────────────
+/** Start the per-foreground-app guard loop (enforces app-path blocks). */
 export const startGuard = () => invoke<void>("start_guard");
 
 // ─── whitelist (block_rule rows with kind="whitelist") ──────────
+/** All active whitelist rules. */
 export const listWhitelist = () => invoke<BlockRule[]>("list_whitelist");
-// `kind` is forced to "whitelist" by the Rust side, so the draft's own
-// kind is irrelevant here.
+/** Insert a whitelist rule. The Rust side forces `kind="whitelist"`. */
 export const createWhitelist = (rule: Omit<BlockRule, "id" | "created_at">) =>
   invoke<number>("create_whitelist", { rule: { ...rule, created_at: 0 } });
+/** Delete a whitelist rule by id. */
 export const deleteWhitelist = (id: number) =>
   invoke<void>("delete_whitelist", { id });
-// Flips `active` and returns the new value.
+/** Flip a whitelist rule's `active` flag and return the new value. */
 export const toggleWhitelist = (id: number) =>
   invoke<boolean>("toggle_whitelist", { id });
 

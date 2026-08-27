@@ -6,7 +6,9 @@
 
 pub mod engine;
 pub mod storage;
-pub mod ipc;
+pub mod ipc {
+    pub mod commands;
+}
 pub mod tray;
 
 /// Check that the Microsoft Edge WebView2 Runtime is installed.

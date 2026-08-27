@@ -262,10 +262,10 @@ impl TimerHandle {
         self.locked.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    /// Toggle the locked flag on a live session. Currently unused — MVP
-    /// locks at start and holds until the session ends — but kept here
-    /// so `set_session_locked_inner` can flip it without re-creating the
-    /// handle.
+    /// Toggle the locked flag on a live session. Used by
+    /// `set_session_locked_inner` to flip mid-session; the public IPC
+    /// path always reads `locked=true` for the lifetime of a focus
+    /// session, so the lock is effectively one-way in MVP.
     pub fn set_locked(&self, locked: bool) {
         self.locked.store(locked, std::sync::atomic::Ordering::SeqCst);
     }
