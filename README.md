@@ -1,7 +1,7 @@
 # Quietly
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/quietly-dev/quietly/actions/workflows/ci.yml/badge.svg)](https://github.com/quietly-dev/quietly/actions/workflows/ci.yml)
+[![CI](https://github.com/yhcpi/quietly/actions/workflows/ci.yml/badge.svg)](https://github.com/yhcpi/quietly/actions/workflows/ci.yml)
 
 A Windows desktop focus / productivity app. Pick a duration, hit Start,
 and Quietly routes distracting sites / apps through a local proxy that

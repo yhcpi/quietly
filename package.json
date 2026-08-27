@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/quietly-dev/quietly.git"
+    "url": "https://github.com/yhcpi/quietly.git"
   },
   "keywords": ["focus", "productivity", "tauri", "react"],
   "scripts": {

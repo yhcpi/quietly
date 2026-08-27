@@ -5,8 +5,8 @@ description = "A Windows desktop focus / productivity app that blocks distractin
 authors = ["Quietly Dev"]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/quietly-dev/quietly"
-homepage = "https://github.com/quietly-dev/quietly"
+repository = "https://github.com/yhcpi/quietly"
+homepage = "https://github.com/yhcpi/quietly"
 keywords = ["focus", "productivity", "tauri", "windows", "proxy"]
 categories = ["productivity"]
 
